@@ -1,0 +1,12 @@
+{
+  "entryPoints": ["src/index.ts"],
+  "out": "docs",
+  "includeVersion": true,
+  "hideGenerator": true,
+  "readme": "README.md",
+  "customTitle": "github.com/truestamp/truestamp-verify",
+  "customTitleLink": "https://github.com/truestamp/truestamp-verify",
+  "footerTypedocVersion": false,
+  "footerDate": false,
+  "footerTime": false
+}
