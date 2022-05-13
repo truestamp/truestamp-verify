@@ -18,9 +18,13 @@ import {
 
 import { verifyStellar } from './verifyStellar'
 
+/**
+ * A function to check if a commitment is valid. Throws an Error on verification failures.
+ * @param commitment A commitment object to verify.
+ * @returns A promise that resolves to an Object if the commitment is valid.
+ */
 export async function verify(
   commitment: Commitment,
-  options: { testing?: boolean } = { testing: false },
 ): Promise<CommitmentVerification> {
   try {
     assert(commitment, CommitmentStruct)
@@ -41,11 +45,13 @@ export async function verify(
     }
   }
 
+  // Decode the commitment's ID and verify it's structure. Also verify the
+  // testing environment indicators in the Id and the commitment are in sync.
   try {
     const decodedId: IdV1DecodeUnsafely = decodeUnsafely({ id: commitment.id })
-    if (decodedId.test !== options.testing) {
+    if (decodedId.test && !commitment.testing) {
       throw new Error(
-        `function 'options.testing' arg must match the 'test' flag embedded in the Id`,
+        `The commitment's 'testing' property, and the Id, must agree on testing environment`,
       )
     }
   } catch (error) {
@@ -114,7 +120,7 @@ export async function verify(
         try {
           const v: Verification = await verifyStellar(
             transactionsForMerkleRoot[i],
-            options.testing,
+            commitment.testing,
           )
           assert(v, VerificationStruct)
           verifications.push(v)
@@ -144,12 +150,9 @@ export async function verify(
  * @param commitment A commitment object to verify.
  * @returns A promise that resolves to a boolean indicating if the commitment is valid.
  */
-export async function isVerified(
-  commitment: Commitment,
-  options: { testing?: boolean } = { testing: false },
-): Promise<boolean> {
+export async function isVerified(commitment: Commitment): Promise<boolean> {
   try {
-    await verify(commitment, { testing: options.testing })
+    await verify(commitment)
     return true
   } catch (error) {
     return false
@@ -161,11 +164,8 @@ export async function isVerified(
  * @param commitment A commitment object to verify.
  * @returns A promise that resolves to void when the commitment is valid.
  */
-export async function assertVerified(
-  commitment: Commitment,
-  options: { testing?: boolean } = { testing: false },
-): Promise<void> {
-  if (!(await isVerified(commitment, { testing: options.testing }))) {
+export async function assertVerified(commitment: Commitment): Promise<void> {
+  if (!(await isVerified(commitment))) {
     throw new Error('Invalid commitment')
   }
 }

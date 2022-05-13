@@ -9,6 +9,7 @@ import {
   enums,
   nonempty,
   object,
+  optional,
   pattern,
   size,
   string,
@@ -117,6 +118,7 @@ export type CommitTransaction = Infer<typeof CommitTransactionStruct>
 
 export const CommitmentStruct = object({
   type: enums(['commitment']),
+  testing: optional(boolean()),
   id: nonempty(truestampId()),
   envelopeHash: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
   submittedAt: nonempty(iso8601()),
