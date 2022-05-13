@@ -19,7 +19,7 @@ export async function verifyStellar(
 
   if (!txResp.ok) {
     throw new Error(
-      `Stellar : failed to fetch transaction Id '${transaction.transactionId}'`,
+      `Stellar : failed to fetch transaction Id '${transaction.transactionId}' :  status ${txResp.status} : ${txResp.statusText}`,
     )
   }
 
