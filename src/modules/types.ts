@@ -1,7 +1,9 @@
 // Copyright © 2020-2022 Truestamp Inc. All rights reserved.
 
 import { DateTime } from 'luxon'
-
+import * as EmailValidator from 'email-validator'
+import isURI from '@stdlib/assert/is-uri'
+import { decode } from '@stablelib/base64'
 import {
   array,
   boolean,
@@ -9,12 +11,14 @@ import {
   enums,
   nonempty,
   object,
+  omit,
   optional,
   pattern,
   size,
   string,
   number,
   record,
+  trimmed,
   tuple,
   Infer,
 } from 'superstruct'
@@ -46,12 +50,17 @@ export const HASH_FUNCTION_NAMES: string[] = [
   'sha3_512',
 ]
 
-// A valid ISO 8601 date string or any precision in any timezone
-const iso8601 = () =>
-  define<string>('iso8601', value => {
+// A valid ISO 8601 date string in UTC timezone Z or with no offset +00:00
+const iso8601UTC = () =>
+  define<string>('iso8601UTC', value => {
     try {
       if (typeof value === 'string') {
-        return DateTime.fromISO(value).isValid
+        if (!value.endsWith('Z') && !value.endsWith('+00:00')) {
+          return false
+        }
+
+        const d = DateTime.fromISO(value, { zone: 'utc' })
+        return d.isValid && d.offsetNameShort === 'UTC'
       } else {
         return false
       }
@@ -68,6 +77,70 @@ const truestampId = () =>
       return false
     }
   })
+
+const email = () =>
+  define<string>('email', value => {
+    try {
+      if (typeof value === 'string') {
+        return EmailValidator.validate(value)
+      } else {
+        return false
+      }
+    } catch (error) {
+      return false
+    }
+  })
+
+const base64 = () =>
+  define<string>('base64', value => {
+    if (typeof value === 'string') {
+      decode(value)
+    }
+
+    try {
+      if (typeof value === 'string') {
+        decode(value)
+        return true
+      } else {
+        return false
+      }
+    } catch (error) {
+      return false
+    }
+  })
+
+const URI = () =>
+  define<string>('URI', value => {
+    try {
+      if (typeof value === 'string') {
+        return isURI(value)
+      } else {
+        return false
+      }
+    } catch (error) {
+      return false
+    }
+  })
+
+/**
+ * A simplified version of the PersonStruct.
+ */
+export const VerificationPersonStruct = object({
+  type: enums(['person']),
+  organizationName: size(trimmed(string()), 1, 64),
+  email: email(),
+  uri: URI(),
+})
+
+export const SignatureStruct = object({
+  type: enums(['signature']),
+  publicKey: base64(),
+  signature: base64(),
+  signatureType: enums(['ed25519']),
+  signer: optional(VerificationPersonStruct),
+})
+
+export type Signature = Infer<typeof SignatureStruct>
 
 /**
  * The struct that defines the shape of one layer of an Object encoded inclusion proof.
@@ -116,35 +189,85 @@ export const CommitTransactionStruct = object({
 
 export type CommitTransaction = Infer<typeof CommitTransactionStruct>
 
-export const CommitmentStruct = object({
-  type: enums(['commitment']),
-  testing: optional(boolean()),
-  id: nonempty(truestampId()),
-  envelopeHash: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
-  submittedAt: nonempty(iso8601()),
+export const CommitmentDataStruct = object({
+  id: truestampId(),
+  submittedAt: iso8601UTC(),
   proofs: array(CommitProofStruct),
   transactions: record(string(), array(CommitTransactionStruct)),
 })
 
+export type CommitmentData = Infer<typeof CommitmentDataStruct>
+
+export const CommitmentStruct = object({
+  type: enums(['commitment']),
+  hash: pattern(string(), REGEX_HASH_HEX_32), // MUST be h(canonify(data))
+  hashType: enums(['sha-256']),
+  signatures: nonempty(array(SignatureStruct)), // One, or more, sign(hash||hashType)
+  data: CommitmentDataStruct,
+  timestamp: iso8601UTC(),
+})
+
 export type Commitment = Infer<typeof CommitmentStruct>
 
-export const VerificationStruct = object({
+export const VerificationProofStruct = object({
+  verified: boolean(),
+  inputHash: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
+  merkleRoot: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
+  error: optional(string()),
+})
+
+export type VerificationProof = Infer<typeof VerificationProofStruct>
+
+export const VerificationTransactionStruct = object({
   intent: enums(['xlm', 'twtr', 'eth', 'btc']),
+  verified: boolean(),
   inputHash: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
   transactionId: nonempty(string()),
   blockId: nonempty(string()),
-  timestamp: nonempty(iso8601()),
-  urlApi: nonempty(string()),
-  urlWeb: nonempty(string()),
-  testing: boolean(),
+  timestamp: optional(nonempty(iso8601UTC())),
+  urlApi: optional(nonempty(string())),
+  urlWeb: optional(nonempty(string())),
+  error: optional(string()),
 })
 
-export type Verification = Infer<typeof VerificationStruct>
+export type VerificationTransaction = Infer<
+  typeof VerificationTransactionStruct
+>
 
 export const CommitmentVerificationStruct = object({
   type: enums(['commitment-verification']),
   verified: boolean(),
-  verifications: nonempty(array(VerificationStruct)),
+  signatureHashVerified: boolean(),
+  signatureVerified: boolean(),
+  signaturePublicKeyVerified: boolean(),
+  testing: optional(boolean()),
+  proofs: array(VerificationProofStruct),
+  transactions: array(VerificationTransactionStruct),
+  error: optional(string()),
 })
 
 export type CommitmentVerification = Infer<typeof CommitmentVerificationStruct>
+
+export const EnvironmentStruct = enums(['development', 'staging', 'production'])
+export type Environment = Infer<typeof EnvironmentStruct>
+
+export const SignedKeyStruct = object({
+  environment: EnvironmentStruct,
+  expired: boolean(),
+  handle: string(),
+  publicKey: base64(),
+  type: enums(['ed25519']),
+  selfSignature: base64(),
+})
+
+export type SignedKey = Infer<typeof SignedKeyStruct>
+
+export const UnsignedKeyStruct = omit(SignedKeyStruct, ['selfSignature'])
+
+export type UnsignedKey = Infer<typeof UnsignedKeyStruct>
+
+export interface CanonicalHash {
+  hash: Uint8Array
+  hashHex: string
+  hashType: string
+}

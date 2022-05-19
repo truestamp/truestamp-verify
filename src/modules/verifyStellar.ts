@@ -1,21 +1,25 @@
 import { assert } from 'superstruct'
 import { encode as hexEncode, decode as hexDecode } from '@stablelib/hex'
 import { equal } from '@stablelib/constant-time'
-import { decodeURLSafe } from '@stablelib/base64'
-import fetch from 'isomorphic-unfetch'
+import { decode } from '@stablelib/base64'
+import unfetch from 'isomorphic-unfetch'
 
-import { CommitTransaction, Verification, VerificationStruct } from './types'
+import {
+  CommitTransaction,
+  VerificationTransaction,
+  VerificationTransactionStruct,
+} from './types'
 
 export async function verifyStellar(
   transaction: CommitTransaction,
   testing: boolean | undefined,
-): Promise<Verification> {
+): Promise<VerificationTransaction> {
   const baseUrl = testing
     ? 'https://horizon-testnet.stellar.org'
     : 'https://horizon.stellar.org'
 
   const txUrl = `${baseUrl}/transactions/${transaction.transactionId}`
-  const txResp = await fetch(txUrl)
+  const txResp = await unfetch(txUrl)
 
   if (!txResp.ok) {
     throw new Error(
@@ -54,8 +58,8 @@ export async function verifyStellar(
     )
   }
 
-  // memo is returned as a base64 encoded string
-  const txMemo = decodeURLSafe(tx.memo)
+  // memo is returned as a base64 encoded string (not url safe string)
+  const txMemo = decode(tx.memo)
 
   if (!equal(txMemo, hexDecode(transaction.inputHash))) {
     throw new Error(
@@ -70,7 +74,7 @@ export async function verifyStellar(
     )
   }
 
-  const ledgerResp = await fetch(`${baseUrl}/ledgers/${transaction.blockId}`)
+  const ledgerResp = await unfetch(`${baseUrl}/ledgers/${transaction.blockId}`)
 
   if (!ledgerResp.ok) {
     throw new Error(`Stellar : failed to fetch ledger '${transaction.blockId}'`)
@@ -87,18 +91,12 @@ export async function verifyStellar(
     )
   }
 
-  // console.log(
-  //   `Stellar memo '${hexEncode(txMemo)}' for Stellar transaction '${transaction.transactionId
-  //   }' matches Truestamp transaction inputHash '${transaction.inputHash
-  //   }. See URL : 'https://stellar.expert/explorer/testnet/tx/${transaction.transactionId
-  //   }'`,
-  // )
-
   // A browser page with Transaction Details
   // eslint-disable-next-line prettier/prettier
   const urlHuman = `https://stellar.expert/explorer/${testing ? 'testnet' : 'public'}/tx/${transaction.transactionId}`
 
-  const verification: Verification = {
+  const verification: VerificationTransaction = {
+    verified: true,
     intent: 'xlm',
     inputHash: transaction.inputHash,
     transactionId: transaction.transactionId,
@@ -106,9 +104,8 @@ export async function verifyStellar(
     timestamp: ledger.closed_at,
     urlApi: txUrl,
     urlWeb: urlHuman,
-    testing: testing ?? false,
   }
 
-  assert(verification, VerificationStruct)
+  assert(verification, VerificationTransactionStruct)
   return verification
 }
