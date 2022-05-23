@@ -287,7 +287,7 @@ export async function verify(
 
   for (const merkleRoot of proofMerkleRoots) {
     const transactionsForMerkleRoot: CommitTransaction[] =
-      transactions[merkleRoot] ?? []
+      transactions[merkleRoot] || []
 
     for (let i = 0; i < transactionsForMerkleRoot.length; i++) {
       try {
@@ -410,7 +410,7 @@ export async function assertVerified(commitment: Commitment): Promise<void> {
   try {
     const verification: CommitmentVerification = await verify(commitment)
     if (!verification.verified) {
-      throw new Error(verification.error ?? 'Commitment is not valid')
+      throw new Error(verification.error || 'Commitment is not valid')
     }
   } catch (error) {
     if (error instanceof Error) {
