@@ -4,7 +4,7 @@
 //   npm run build (in the root of the repository)
 //   node examples/nodejs/index.cjs
 
-const { assertVerified, isVerified, verify } = require('../../dist/index.cjs')
+const { assertVerified, isVerified, verify } = require('../../lib/index.cjs')
 
 // Substitute with a Truestamp commitment object to be verified.
 const commitmentSample = require('../commitment.json')

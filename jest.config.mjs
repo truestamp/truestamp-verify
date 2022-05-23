@@ -14,7 +14,7 @@ export default {
   // cacheDirectory: "/private/var/folders/cg/q568zb_17fv6qx4r2lpl3g0w0000gn/T/jest_dx",
 
   // Automatically clear mock calls, instances and results before every test
-  // clearMocks: false,
+  clearMocks: true,
 
   // Indicates whether the coverage information should be collected while executing the test
   collectCoverage: true,
@@ -29,6 +29,11 @@ export default {
   // coveragePathIgnorePatterns: [
   //   "/node_modules/"
   // ],
+  coveragePathIgnorePatterns: [
+    "/node_modules/",
+    "/lib/",
+    "/examples/",
+  ],
 
   // Indicates which provider should be used to instrument code for coverage
   coverageProvider: "v8",
@@ -156,6 +161,10 @@ export default {
   // testPathIgnorePatterns: [
   //   "/node_modules/"
   // ],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/examples/',
+  ],
 
   // The regexp pattern or array of patterns that Jest uses to detect test files
   // testRegex: [],

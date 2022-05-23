@@ -1,39 +1,18 @@
 {
   "name": "@truestamp/verify",
   "type": "module",
-  "files": [
-    "dist"
-  ],
-  "source": "src/index.ts",
-  "main": "dist/index.cjs",
-  "umd:main": "dist/index.umd.js",
-  "module": "./dist/index.module.js",
-  "unpkg": "./dist/index.umd.js",
-  "jsdelivr": "./dist/index.umd.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    "require": "./dist/index.cjs",
-    "import": "./dist/index.module.js",
-    "node": "./dist/index.cjs",
-    "default": "./dist/index.module.js"
-  },
-  "scripts": {
-    "clean": "rimraf dist && rimraf docs",
-    "docs": "npx typedoc --plugin typedoc-plugin-extras --options typedoc.json src/index.ts",
-    "docs-preview": "npx live-server docs",
-    "package-check": "npx package-check",
-    "build-web": "microbundle --target=web --tsconfig tsconfig.json --format es,umd,modern",
-    "build-node": "microbundle --target=node --tsconfig tsconfig.json --format cjs",
-    "build-local": "npm run package-check && npm run clean && npm run docs && npm run build-web && npm run build-node",
-    "build": "npm run build-web && npm run build-node",
-    "dev": "microbundle watch",
-    "lint": "eslint . --ext .ts",
-    "lint-and-fix": "eslint . --ext .ts --fix",
-    "prettier-format": "prettier --config .prettierrc 'src/**/*.ts' --write",
-    "test": "jest",
-    "watch": "jest --watchAll"
-  },
+  "version": "0.0.1",
+  "author": "Truestamp <support@truestamp.com>",
+  "license": "MIT",
   "description": "A library for independent verification of Truestamp Commitments.",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/truestamp/truestamp-verify.git"
+  },
+  "bugs": {
+    "url": "https://github.com/truestamp/truestamp-verify/issues"
+  },
+  "homepage": "https://truestamp.github.io/truestamp-verify/",
   "keywords": [
     "crypto",
     "cryptography",
@@ -53,14 +32,44 @@
     "verification",
     "verify"
   ],
-  "version": "0.0.1",
-  "homepage": "https://truestamp.github.io/truestamp-verify/",
-  "author": "Truestamp <support@truestamp.com>",
-  "repository": {
-    "type": "git",
-    "url": "git://github.com/truestamp/truestamp-verify.git"
+  "files": [
+    "README.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "LICENSE.txt",
+    "package.json",
+    "mod.ts",
+    "/src",
+    "/lib",
+    "/examples"
+  ],
+  "source": "src/index.ts",
+  "types": "lib/index.d.ts",
+  "main": "lib/index.cjs",
+  "module": "lib/index.mjs",
+  "exports": {
+    "require": "./lib/index.cjs",
+    "import": "./lib/index.mjs",
+    "node": "./lib/index.cjs",
+    "default": "./lib/index.mjs"
   },
-  "license": "MIT",
+  "scripts": {
+    "clean": "rimraf lib",
+    "docs": "npx typedoc --plugin typedoc-plugin-extras --options typedoc.json src/index.ts",
+    "docs-preview": "npx live-server docs",
+    "package-check": "npx package-check",
+    "lint": "eslint . --ext .ts",
+    "lint-and-fix": "eslint . --ext .ts --fix",
+    "test": "jest",
+    "watch": "jest --watchAll",
+    "serve": "npx serve --cors -p 8080",
+    "ts-types": " tsc --emitDeclarationOnly --outDir lib",
+    "esbuild-iife": "node ./esbuild.iife.cjs",
+    "esbuild-module": "node ./esbuild.module.cjs",
+    "esbuild-node": "node ./esbuild.node.cjs",
+    "build": "npm run lint && npm run package-check && npm run clean && npm run esbuild-module && npm run esbuild-node && npm run esbuild-iife && npm run ts-types"
+  },
   "devDependencies": {
     "@compodoc/live-server": "^1.2.3",
     "@skypack/package-check": "^0.2.2",
@@ -80,7 +89,8 @@
     "@typescript-eslint/eslint-plugin": "^5.25.0",
     "@typescript-eslint/parser": "^5.25.0",
     "email-validator": "^2.0.4",
-    "eslint": "^8.15.0",
+    "esbuild": "^0.14.39",
+    "eslint": "^8.16.0",
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-eslint-comments": "^3.2.0",
     "eslint-plugin-import": "^2.26.0",
@@ -89,12 +99,11 @@
     "isomorphic-unfetch": "^3.1.0",
     "jest": "^28.1.0",
     "luxon": "^2.4.0",
-    "microbundle": "^0.15.0",
     "prettier": "^2.6.2",
     "rimraf": "^3.0.2",
+    "serve": "^13.0.2",
     "superstruct": "^0.15.4",
     "ts-jest": "^28.0.2",
-    "ts-node": "^10.7.0",
     "typedoc": "^0.22.15",
     "typedoc-plugin-extras": "^2.2.3",
     "typescript": "^4.6.4"

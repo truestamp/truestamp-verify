@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [14.x, 16.x]
+        node-version: [12.x, 14.x, 16.x]
     steps:
       - uses: actions/checkout@v2
       - name: Use Node.js ${{ matrix.node-version }}
@@ -27,19 +27,16 @@ jobs:
         if: steps.cache-modules.outputs.cache-hit != 'true'
         # SECURITY : See : https://wildwolf.name/secure-way-run-npm-ci/
         run: npm ci --ignore-scripts
-      - name: Cache dist
-        id: cache-dist
+      - name: Cache lib
+        id: cache-lib
         uses: actions/cache@v2
         with:
-          path: dist
+          path: lib
           # invalidate key when package*.json (including version bump) or any .ts files in src/ or its subdirectories
-          key: ${{ matrix.node-version }}-${{ runner.OS }}-dist-${{ hashFiles('package.json', 'package-lock.json', 'src/**/*.ts') }}
+          key: ${{ matrix.node-version }}-${{ runner.OS }}-lib-${{ hashFiles('package.json', 'package-lock.json', 'src/**/*.ts') }}
       - name: Build
-        if: steps.cache-dist.outputs.cache-hit != 'true'
+        if: steps.cache-lib.outputs.cache-hit != 'true'
         run: npm run build --if-present
-      - name: Lint
-        if: steps.cache-dist.outputs.cache-hit != 'true'
-        run: npm run lint --if-present
       - name: Test
         run: npm test
         env:
@@ -70,15 +67,15 @@ jobs:
         if: steps.cache-modules.outputs.cache-hit != 'true'
         # SECURITY : See : https://wildwolf.name/secure-way-run-npm-ci/
         run: npm ci --ignore-scripts
-      - name: Cache dist
-        id: cache-dist
+      - name: Cache lib
+        id: cache-lib
         uses: actions/cache@v2
         with:
-          path: dist
+          path: lib
           # invalidate key when package*.json (including version bump) or any .ts files in src/ or its subdirectories
-          key: 14.x-${{ runner.OS }}-dist-${{ hashFiles('package.json', 'package-lock.json', 'src/**/*.ts') }}
+          key: 14.x-${{ runner.OS }}-lib-${{ hashFiles('package.json', 'package-lock.json', 'src/**/*.ts') }}
       - name: Build
-        if: steps.cache-dist.outputs.cache-hit != 'true'
+        if: steps.cache-lib.outputs.cache-hit != 'true'
         run: npm run build --if-present
       - name: Test
         run: npm test
@@ -108,15 +105,15 @@ jobs:
   #       if: steps.cache-modules.outputs.cache-hit != 'true'
   #       # SECURITY : See : https://wildwolf.name/secure-way-run-npm-ci/
   #       run: npm ci --ignore-scripts
-  #     - name: Cache dist
-  #       id: cache-dist
+  #     - name: Cache lib
+  #       id: cache-lib
   #       uses: actions/cache@v2
   #       with:
-  #         path: dist
+  #         path: lib
   #         # invalidate key when package*.json (including version bump) or any .ts files in src/ or its subdirectories
-  #         key: 14.x-${{ runner.OS }}-dist-${{ hashFiles('package.json', 'package-lock.json', 'src/**/*.ts') }}
+  #         key: 14.x-${{ runner.OS }}-lib-${{ hashFiles('package.json', 'package-lock.json', 'src/**/*.ts') }}
   #     - name: Build
-  #       if: steps.cache-dist.outputs.cache-hit != 'true'
+  #       if: steps.cache-lib.outputs.cache-hit != 'true'
   #       run: npm run build --if-present
   #     - name: Test
   #       run: npm test
