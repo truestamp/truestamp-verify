@@ -2,6 +2,8 @@
 
 import { DateTime } from 'luxon'
 import * as EmailValidator from 'email-validator'
+import { isIso3166Alpha2Code, Iso3166Alpha2Code } from 'iso-3166-ts'
+
 import isURI from '@stdlib/assert/is-uri'
 import { decode } from '@stablelib/base64'
 import {
@@ -122,22 +124,58 @@ const URI = () =>
     }
   })
 
-/**
- * A simplified version of the PersonStruct.
- */
-export const VerificationPersonStruct = object({
-  type: enums(['person']),
-  organizationName: size(trimmed(string()), 1, 64),
-  email: email(),
-  uri: URI(),
+// A valid ISO 3166 Alpha 2 Country Code
+// https://github.com/karpour/iso-3166-ts
+// https://www.iso.org/iso-3166-country-codes.html
+const iso3166Alpha2Code = () =>
+  define<Iso3166Alpha2Code>('iso3166Alpha2Code', value => {
+    try {
+      if (typeof value === 'string') {
+        return isIso3166Alpha2Code(value)
+      } else {
+        return false
+      }
+    } catch (error) {
+      return false
+    }
+  })
+
+// Universal Postal Union (UPU) S42 International Addressing Standards
+// https://www.upu.int/UPU/media/upu/documents/PostCode/S42_International-Addressing-Standards.pdf
+// https://www.upu.int/UPU/media/upu/documents/PostCode/AddressElementsFormattingAnInternationalAdressEn.pdf
+export const AddressStruct = object({
+  type: enums(['address']),
+  streetNo: optional(size(trimmed(string()), 1, 8)),
+  streetName: optional(size(trimmed(string()), 1, 64)),
+  streetType: optional(size(trimmed(string()), 1, 16)),
+  floor: optional(size(trimmed(string()), 1, 8)),
+  town: optional(size(trimmed(string()), 1, 64)),
+  region: optional(size(trimmed(string()), 1, 64)),
+  postcode: optional(size(trimmed(string()), 1, 16)),
+  countryCode: iso3166Alpha2Code(),
 })
+
+export type Address = Infer<typeof AddressStruct>
+
+export const PersonStruct = object({
+  type: enums(['person']),
+  givenName: optional(size(trimmed(string()), 1, 32)),
+  surname: optional(size(trimmed(string()), 1, 32)),
+  organizationName: optional(size(trimmed(string()), 1, 64)),
+  roles: optional(nonempty(array(size(trimmed(string()), 1, 32)))),
+  email: optional(email()),
+  uri: optional(URI()),
+  address: optional(AddressStruct),
+})
+
+export type Person = Infer<typeof PersonStruct>
 
 export const SignatureStruct = object({
   type: enums(['signature']),
   publicKey: base64(),
   signature: base64(),
   signatureType: enums(['ed25519']),
-  signer: optional(VerificationPersonStruct),
+  signer: optional(PersonStruct),
 })
 
 export type Signature = Infer<typeof SignatureStruct>
