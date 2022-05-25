@@ -22,6 +22,8 @@ import {
   CommitmentVerificationStruct,
   SignedKey,
   SignedKeyStruct,
+  SignedKeys,
+  SignedKeysStruct,
   UnsignedKey,
   UnsignedKeyStruct,
   VerificationProof,
@@ -87,45 +89,31 @@ async function getKeyByHandle(
   keys?: SignedKey[],
   offline?: boolean,
 ): Promise<SignedKey | undefined> {
-  let key: SignedKey | undefined = undefined
+  // If an array of keys was provided, use them to the exclusion of any other.
+  if (is(keys, SignedKeysStruct)) {
+    return keys.find((key: SignedKey): boolean => key.handle === handle)
+  }
 
-  // If operating offline and we have a list of keys, use that to find the key
-  if (offline === true && keys !== undefined) {
-    const foundKey: SignedKey | undefined = keys.find(
+  // No keys were provided for offline, so we'll use the baked public keys
+  if (offline) {
+    return BACKUP_PUBLIC_KEYS.find(
       (key: SignedKey): boolean => key.handle === handle,
     )
-
-    if (is(foundKey, SignedKeyStruct)) {
-      key = foundKey
-    }
   }
 
-  // If operating offline and we do not have a list of keys, try using a backup copy
-  // of the keys stored in this library.
-  if (offline === true) {
-    const foundKey: SignedKey | undefined = BACKUP_PUBLIC_KEYS.find(
-      (key: SignedKey): boolean => key.handle === handle,
-    )
+  // Not operating offline, try to fetch the key from the key server
+  try {
+    const response: Response = await fetch(`${KEY_SERVER_BASE_URL}/${handle}`)
 
-    if (is(foundKey, SignedKeyStruct)) {
-      key = foundKey
+    if (response.ok) {
+      const key: SignedKey = create(await response.json(), SignedKeyStruct)
+      return is(key, SignedKeyStruct) ? key : undefined
     }
+
+    return undefined
+  } catch (error) {
+    return undefined
   }
-
-  // If we are not operating offline, try to fetch the key from the key server
-  if (!offline) {
-    try {
-      const response: Response = await fetch(`${KEY_SERVER_BASE_URL}/${handle}`)
-
-      if (response.ok) {
-        key = create(await response.json(), SignedKeyStruct)
-      }
-    } catch (error) {
-      // let key remain undefined
-    }
-  }
-
-  return key
 }
 
 /**
@@ -226,19 +214,20 @@ function canonicalizeAndHashData(
  * A function to check if a commitment is valid. If there are any errors,
  * the appropriate 'ok' property will be set to 'false'.
  *
- * Verification can also be performed offline. When running offline you can
- * provide a list of signed keys from https://keys.truestamp.com that were
- * previously saved. If no keys are provided, the library will attempt to
+ * You can provide a list of signed keys from https://keys.truestamp.com that were
+ * previously saved. Keys can be provided in offline or online mode.
+ *
+ * In offline mode, if no keys are provided, the library will attempt to
  * use a backup copy of the keys stored in this library. These backup keys
  * are not guaranteed to be current, but they are the best available option.
  *
- * When running offline, the library will **not** attempt to verify transactions
+ * In offline mode, the library will **not** attempt to verify transactions
  * against the actual on-chain state. It will only verify that the commitment
  * is internally cryptographically sound. Since it does not have access to the
- * on-chain state, it cannot verify a timestamp related to this commitment.
+ * on-chain state, it cannot verify a timestamp attested to by this commitment.
  *
  * @param commitment A commitment object to verify.
- * @param options.keys An optional array of keys to use when offline.
+ * @param options.keys Force use of a set of keys.
  * @param options.offline Whether to attempt to verify the commitment offline.
  * @returns A promise that resolves to an Object. The top-level `ok` property will be 'true' if the entire proof is verified.
  *
@@ -566,6 +555,7 @@ export async function verify(
 /**
  * Predicate function to check if a commitment is valid. Throws no Errors.
  * @param commitment A commitment object to verify online.
+ * @param options.keys Force use of a set of keys.
  * @returns A promise that resolves to a boolean indicating if the commitment is valid.
  */
 export async function isVerified(
@@ -587,6 +577,7 @@ export async function isVerified(
 /**
  * Predicate function to check if a commitment is valid while skipping any Internet fetches. Throws no Errors.
  * @param commitment A commitment object to verify offline.
+ * @param options.keys Force use of a set of keys.
  * @returns A promise that resolves to a boolean indicating if the commitment is valid.
  */
 export async function isVerifiedUnsafelyOffline(
@@ -607,6 +598,7 @@ export async function isVerifiedUnsafelyOffline(
 /**
  * Assert that the commitment is valid. If not, throw an Error.
  * @param commitment A commitment object to verify online.
+ * @param options.keys Force use of a set of keys.
  * @returns A promise that resolves to void when the commitment is valid.
  */
 export async function assertVerified(
@@ -631,6 +623,7 @@ export async function assertVerified(
 /**
  * Assert that the commitment is valid while skipping any Internet fetches. If not, throw an Error.
  * @param commitment A commitment object to verify offline.
+ * @param options.keys Force use of a set of keys.
  * @returns A promise that resolves to void when the commitment is valid.
  */
 export async function assertVerifiedUnsafelyOffline(

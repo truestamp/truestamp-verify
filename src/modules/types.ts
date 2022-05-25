@@ -307,6 +307,10 @@ export const SignedKeyStruct = object({
 
 export type SignedKey = Infer<typeof SignedKeyStruct>
 
+export const SignedKeysStruct = array(SignedKeyStruct)
+
+export type SignedKeys = Infer<typeof SignedKeysStruct>
+
 export const UnsignedKeyStruct = omit(SignedKeyStruct, ['selfSignature'])
 
 export type UnsignedKey = Infer<typeof UnsignedKeyStruct>

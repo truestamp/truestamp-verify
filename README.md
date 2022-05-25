@@ -4,13 +4,14 @@ This library provides a TypeScript/JavaScript API for verifying
 [Truestamp](https://www.truestamp.com) Commitments.
 
 This library is intended to provide thorough cryptographic verification of
-Truestamp Commitments. Ideally, this verification is independent of,
-and without reliance on, Truestamp services or APIs. This library has
-no external dependencies.
+Truestamp Commitments. Ideally, this verification is independent of, and without
+reliance on, Truestamp services or APIs. This library has no external
+dependencies.
 
-This independence helps provides users with the confidence that their Commitments
-are verifiable for the long term. The code for this verification is intended
-to be simple to audit so as to provide confidence in its functionality and security.
+This independence helps provides users with the confidence that their
+Commitments are verifiable for the long term. The code for this verification is
+intended to be simple to audit so as to provide confidence in its functionality
+and security.
 
 The verification of the cryptographic integrity of the Commitment is **always**
 performed locally and requires no access to the Internet. There are requests
@@ -18,12 +19,17 @@ made to external services for the purpose of comparing locally calculated
 results to the values expected to be stored on-chain and to determine the
 timestamp that a commitment attests to.
 
-Currently, the server [https://keys.truestamp.com](https://keys.truestamp.com) will be called to help verify that the
-public key in the signature is authoritative.
+If an array of signed public keys is provided as an argument to the various
+verification functions, as can be found on the server
+[https://keys.truestamp.com](https://keys.truestamp.com), they will be used and
+no connections to a key server will be attempted.
 
-When `verify()` is called, an object will be returned that provides details of the
-status of each verification performed on a commitment as well as an `ok` property to
-indicated success or failure.
+When `verify()` is called, an object will be returned that provides details of
+the status of each verification performed on a commitment as well as an `ok`
+property to indicated success or failure.
+
+Alternatively, there are functions that will only return a boolean, or throw an
+`Error` if there is any verification failure.
 
 ## Install
 
