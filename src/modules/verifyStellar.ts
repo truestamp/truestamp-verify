@@ -96,7 +96,8 @@ export async function verifyStellar(
   const urlHuman = `https://stellar.expert/explorer/${testing ? 'testnet' : 'public'}/tx/${transaction.transactionId}`
 
   const verification: VerificationTransaction = {
-    verified: true,
+    ok: true,
+    offline: false,
     intent: 'xlm',
     inputHash: transaction.inputHash,
     transactionId: transaction.transactionId,

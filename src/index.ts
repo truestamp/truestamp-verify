@@ -5,4 +5,10 @@ export {
   CommitmentVerificationStruct,
 } from './modules/types'
 
-export { verify, isVerified, assertVerified } from './modules/verify'
+export {
+  verify,
+  isVerified,
+  isVerifiedUnsafelyOffline,
+  assertVerified,
+  assertVerifiedUnsafelyOffline,
+} from './modules/verify'

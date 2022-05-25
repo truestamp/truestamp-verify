@@ -14,17 +14,16 @@ to be simple to audit so as to provide confidence in its functionality and secur
 
 The verification of the cryptographic integrity of the Commitment is **always**
 performed locally and requires no access to the Internet. There are requests
-made to a few external services for the purpose of comparing locally calculated
-results to values expected to be stored on chain.
+made to external services for the purpose of comparing locally calculated
+results to the values expected to be stored on-chain and to determine the
+timestamp that a commitment attests to.
 
-Currently, the server `keys.truestamp.com` will be called to help verify that the
+Currently, the server [https://keys.truestamp.com](https://keys.truestamp.com) will be called to help verify that the
 public key in the signature is authoritative.
 
-Additional requests may be made to third-party blockchain APIs in order to verify
-transactions for that chain or service.
-
-The library will return a comprehensive audit object to indicate overall pass/fail
-verification, as well as more granular information to indicate what exactly failed.
+When `verify()` is called, an object will be returned that provides details of the
+status of each verification performed on a commitment as well as an `ok` property to
+indicated success or failure.
 
 ## Install
 
@@ -67,6 +66,53 @@ await assertVerified(commitment)
 ```
 
 A more detailed version of this example can be found in [examples/example.cjs].
+
+## Sample Output
+
+```javascript
+{
+  type: 'commitment-verification',
+  ok: true,
+  offline: false,
+  testEnv: true,
+  signature: { hash: true, publicKey: true, verified: true },
+  proofs: [
+    {
+      ok: true,
+      inputHash: 'b1fc469deae708277eb87b089800731a57f61ddbddf0c71332288397daffa8fa',
+      merkleRoot: 'ebbe387c731b1fdcee412b4fc7c82d966cd0276e79c6a9c319e304dd78dedac4'
+    },
+    {
+      ok: true,
+      inputHash: 'ebbe387c731b1fdcee412b4fc7c82d966cd0276e79c6a9c319e304dd78dedac4',
+      merkleRoot: '93c5277c0135e85b61a9798345e8c3ea21b17c0f85defe45e390b4758cf1b16b'
+    },
+    {
+      ok: true,
+      inputHash: '93c5277c0135e85b61a9798345e8c3ea21b17c0f85defe45e390b4758cf1b16b',
+      merkleRoot: '333e65c8b3ee8c4a095dfb97890d295a0d36097cf03e391118f4a214e8c171a2'
+    },
+    {
+      ok: true,
+      inputHash: '333e65c8b3ee8c4a095dfb97890d295a0d36097cf03e391118f4a214e8c171a2',
+      merkleRoot: '37aea4f6c62d1fb647fca9e13f90a474033fdd0102df00c80623ab8e6dd9aefe'
+    }
+  ],
+  transactions: [
+    {
+      ok: true,
+      offline: false,
+      intent: 'xlm',
+      inputHash: 'ebbe387c731b1fdcee412b4fc7c82d966cd0276e79c6a9c319e304dd78dedac4',
+      transactionId: '3c702c91598c7ae69d80d6cebe4faf329680ddadb6c2621ad8235f0f999e37a9',
+      blockId: '1071745',
+      timestamp: '2022-05-20T14:33:03Z',
+      urlApi: 'https://horizon-testnet.stellar.org/transactions/3c702c91598c7ae69d80d6cebe4faf329680ddadb6c2621ad8235f0f999e37a9',
+      urlWeb: 'https://stellar.expert/explorer/testnet/tx/3c702c91598c7ae69d80d6cebe4faf329680ddadb6c2621ad8235f0f999e37a9'
+    }
+  ]
+}
+```
 
 ## API Documentation
 

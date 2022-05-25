@@ -33,6 +33,37 @@ import { verifyStellar } from './verifyStellar'
 
 const KEY_SERVER_BASE_URL = 'https://keys.truestamp.com'
 
+// Last updated: 2022-05-24
+const BACKUP_PUBLIC_KEYS: SignedKey[] = [
+  {
+    handle: 'a56faa2b',
+    type: 'ed25519',
+    publicKey: 'K546EiGp4vsAvvOLYA1m0XKyqc4RoJ+7qPoXZs4Z+NU=',
+    environment: 'development',
+    expired: false,
+    selfSignature:
+      'Vj0A4kNa2a4tRLxOEPFwV7irNIGUoe7Q8SX1JfkRHeNea9M+3Q3vT+9n640mMJhm2nUIDvbCtmtB2xqGoqpmCQ==',
+  },
+  {
+    handle: 'f36947d3',
+    type: 'ed25519',
+    publicKey: '2/N8KtnOq46WOvQay/cun/3vin7dYU0jtwliVf6g83s=',
+    environment: 'staging',
+    expired: false,
+    selfSignature:
+      'lWxD/ujp9UdGkk2MsUUla1oAR3FopK8jCeE4eNfeS6HS/ue6dUk+vhoNI3zUNsGFlNXUzwskET/VtS8i5KgQCA==',
+  },
+  {
+    handle: 'b3395500',
+    type: 'ed25519',
+    publicKey: 'BnE/2AYhgMd0KY7tXdMfmRJPoPY4I5h7rhQf+9nswAQ=',
+    environment: 'production',
+    expired: false,
+    selfSignature:
+      'yZG0mJUpeWdaayZMF70bHrBnjIYihmoZoiEbfciGxARvocmLp0JlKXaP5MtQGCd73yqjOHX1aZqHGOPise7fAw==',
+  },
+]
+
 /**
  * For a given public key, calculate its handle.
  * @param publicKey The public key to calculate the handle for
@@ -43,51 +74,113 @@ function getHandleForPublicKey(publicKey: Uint8Array): string {
 }
 
 /**
+ * Attempt to receive a single key from a public key server identified by a handle.
+ * If operating in offline mode, the keys parameter can be used to override the
+ * default public keys baked into this library.
+ * @param handle The handle of the key to retrieve
+ * @param keys An optional array of keys to use when offline.
+ * @param offline Whether to attempt to verify the commitment offline.
+ * @return The key associated with the handle, or undefined if not found
+ */
+async function getKeyByHandle(
+  handle: string,
+  keys?: SignedKey[],
+  offline?: boolean,
+): Promise<SignedKey | undefined> {
+  let key: SignedKey | undefined = undefined
+
+  // If operating offline and we have a list of keys, use that to find the key
+  if (offline === true && keys !== undefined) {
+    const foundKey: SignedKey | undefined = keys.find(
+      (key: SignedKey): boolean => key.handle === handle,
+    )
+
+    if (is(foundKey, SignedKeyStruct)) {
+      key = foundKey
+    }
+  }
+
+  // If operating offline and we do not have a list of keys, try using a backup copy
+  // of the keys stored in this library.
+  if (offline === true) {
+    const foundKey: SignedKey | undefined = BACKUP_PUBLIC_KEYS.find(
+      (key: SignedKey): boolean => key.handle === handle,
+    )
+
+    if (is(foundKey, SignedKeyStruct)) {
+      key = foundKey
+    }
+  }
+
+  // If we are not operating offline, try to fetch the key from the key server
+  if (!offline) {
+    try {
+      const response: Response = await fetch(`${KEY_SERVER_BASE_URL}/${handle}`)
+
+      if (response.ok) {
+        key = create(await response.json(), SignedKeyStruct)
+      }
+    } catch (error) {
+      // let key remain undefined
+    }
+  }
+
+  return key
+}
+
+/**
  * For a given public key, calculate its handle, look it up on a public key server
  * and verify that the key associated with the handle matches the public key passed in.
  * @param publicKey The public key to verify is authoritatively published
- * @return A boolean indicating whether the public key is authoritatively published
+ * @param keys An optional array of keys to use when offline.
+ * @param offline Whether to attempt to verify the commitment offline.
+ * @return A boolean indicating whether the public key is known and authentic.
  */
-async function publishedPublicKeyMatchesPublicKey(
+async function publicKeyMatchesKnownPublicKey(
   publicKey: Uint8Array,
+  keys?: SignedKey[],
+  offline?: boolean,
 ): Promise<boolean> {
   try {
     const handle = getHandleForPublicKey(publicKey)
 
-    const response = await fetch(`${KEY_SERVER_BASE_URL}/${handle}`)
+    let key: SignedKey | undefined = undefined
 
-    if (!response.ok) {
+    key = await getKeyByHandle(handle, keys, offline)
+
+    if (key === undefined) {
       return false
     }
 
-    const foundKey: SignedKey = create(await response.json(), SignedKeyStruct)
-
-    const foundPublicKey = base64Decode(foundKey.publicKey)
+    const foundPublicKey: Uint8Array = base64Decode(key.publicKey)
     if (!equal(foundPublicKey, publicKey)) {
       return false
     }
 
-    // Ensure that the handles from the website key server match the handle we calculated
+    // Ensure that the handle of the found key resolves to match the handle we calculated
     if (
       handle !== getHandleForPublicKey(foundPublicKey) ||
-      handle !== foundKey.handle
+      handle !== key.handle
     ) {
       return false
     }
 
     // Verify that the self-signed signature on the published key is valid
-    // Do this last as its the most expensive step.
-    const foundKeySelfSignature = base64Decode(foundKey.selfSignature)
+    // Do this last as it is the most expensive step.
+    const foundKeySelfSignature: Uint8Array = base64Decode(key.selfSignature)
 
+    // A key without the self-signature component to verify against.
     const unsignedKey: UnsignedKey = {
-      environment: foundKey.environment,
-      expired: foundKey.expired,
-      handle: foundKey.handle,
-      publicKey: foundKey.publicKey,
-      type: foundKey.type,
+      environment: key.environment,
+      expired: key.expired,
+      handle: key.handle,
+      publicKey: key.publicKey,
+      type: key.type,
     }
 
-    const canonicalHashedUnsignedKey = canonicalizeAndHashData(unsignedKey)
+    const canonicalHashedUnsignedKey: CanonicalHash =
+      canonicalizeAndHashData(unsignedKey)
+
     const isKeySelfSignatureVerified = verifyEd25519(
       foundPublicKey,
       canonicalHashedUnsignedKey.hash,
@@ -106,6 +199,8 @@ async function publishedPublicKeyMatchesPublicKey(
 
 /**
  * Canonicalize a Struct and return the sha-256 'hash' and 'hashType' of the canonicalized Struct
+ * @param data The data to canonicalize
+ * @return The canonicalized data
  */
 function canonicalizeAndHashData(
   data: CommitmentData | UnsignedKey,
@@ -129,47 +224,66 @@ function canonicalizeAndHashData(
 
 /**
  * A function to check if a commitment is valid. If there are any errors,
- * the appropriate 'verified' property will be set to 'false' and an 'errors'
- * property may be populated with a helpful message to indicate what failed.
+ * the appropriate 'ok' property will be set to 'false'.
+ *
+ * Verification can also be performed offline. When running offline you can
+ * provide a list of signed keys from https://keys.truestamp.com that were
+ * previously saved. If no keys are provided, the library will attempt to
+ * use a backup copy of the keys stored in this library. These backup keys
+ * are not guaranteed to be current, but they are the best available option.
+ *
+ * When running offline, the library will **not** attempt to verify transactions
+ * against the actual on-chain state. It will only verify that the commitment
+ * is internally cryptographically sound. Since it does not have access to the
+ * on-chain state, it cannot verify a timestamp related to this commitment.
  *
  * @param commitment A commitment object to verify.
- * @returns A promise that resolves to an Object. The `verified` property will be 'true' if the entire proof is verified.
+ * @param options.keys An optional array of keys to use when offline.
+ * @param options.offline Whether to attempt to verify the commitment offline.
+ * @returns A promise that resolves to an Object. The top-level `ok` property will be 'true' if the entire proof is verified.
  *
  * @example Sample output:
- *
- * ```typescript
+ * *
+ * * ```typescript
  *{
  *  type: 'commitment-verification',
- *  testing: true,
- *  verified: true,
- *  signatureVerified: true,
+ *  ok: true,
+ *  offline: false,
+ *  testEnv: true,
+ *  signature: { hash: true, publicKey: true, verified: true },
  *  proofs: [
  *    {
- *      verified: true,
- *      inputHash: 'b2faa122f53e1b36c41680c42a5aba0c8dfc5fdb4cdb32565ad89107e5c26e5f',
- *      merkleRoot: 'd555db5eb2e227660965f96a0ef5db3cb89d5f9f39112f061691eff278a0bf84'
+ *      ok: true,
+ *      inputHash: 'b1fc469deae708277eb87b089800731a57f61ddbddf0c71332288397daffa8fa',
+ *      merkleRoot: 'ebbe387c731b1fdcee412b4fc7c82d966cd0276e79c6a9c319e304dd78dedac4'
  *    },
  *    {
- *      verified: true,
- *      inputHash: 'd555db5eb2e227660965f96a0ef5db3cb89d5f9f39112f061691eff278a0bf84',
- *      merkleRoot: 'a0d54547ea370cd56dd3690160c88d6b8af3a0d3fbb37e34a8c55fcc36b9621f'
+ *      ok: true,
+ *      inputHash: 'ebbe387c731b1fdcee412b4fc7c82d966cd0276e79c6a9c319e304dd78dedac4',
+ *      merkleRoot: '93c5277c0135e85b61a9798345e8c3ea21b17c0f85defe45e390b4758cf1b16b'
  *    },
  *    {
- *      verified: true,
- *      inputHash: 'a0d54547ea370cd56dd3690160c88d6b8af3a0d3fbb37e34a8c55fcc36b9621f',
- *      merkleRoot: '401a33e0cf753c5f2c076ef5f1092d2109661963bc0f95a51bcdf7c083ad0d59'
+ *      ok: true,
+ *      inputHash: '93c5277c0135e85b61a9798345e8c3ea21b17c0f85defe45e390b4758cf1b16b',
+ *      merkleRoot: '333e65c8b3ee8c4a095dfb97890d295a0d36097cf03e391118f4a214e8c171a2'
+ *    },
+ *    {
+ *      ok: true,
+ *      inputHash: '333e65c8b3ee8c4a095dfb97890d295a0d36097cf03e391118f4a214e8c171a2',
+ *      merkleRoot: '37aea4f6c62d1fb647fca9e13f90a474033fdd0102df00c80623ab8e6dd9aefe'
  *    }
  *  ],
  *  transactions: [
  *    {
- *      verified: true,
+ *      ok: true,
+ *      offline: false,
  *      intent: 'xlm',
- *      inputHash: 'd555db5eb2e227660965f96a0ef5db3cb89d5f9f39112f061691eff278a0bf84',
- *      transactionId: 'd4eb2e02aff51117f3374dc9029702128164bfc737b60e9340d246800a8583d4',
- *      blockId: '923404',
- *      timestamp: '2022-05-11T13:49:04Z',
- *      urlApi: 'https://horizon-testnet.stellar.org/transactions/d4eb2e02aff51117f3374dc9029702128164bfc737b60e9340d246800a8583d4',
- *      urlWeb: 'https://stellar.expert/explorer/testnet/tx/d4eb2e02aff51117f3374dc9029702128164bfc737b60e9340d246800a8583d4'
+ *      inputHash: 'ebbe387c731b1fdcee412b4fc7c82d966cd0276e79c6a9c319e304dd78dedac4',
+ *      transactionId: '3c702c91598c7ae69d80d6cebe4faf329680ddadb6c2621ad8235f0f999e37a9',
+ *      blockId: '1071745',
+ *      timestamp: '2022-05-20T14:33:03Z',
+ *      urlApi: 'https://horizon-testnet.stellar.org/transactions/3c702c91598c7ae69d80d6cebe4faf329680ddadb6c2621ad8235f0f999e37a9',
+ *      urlWeb: 'https://stellar.expert/explorer/testnet/tx/3c702c91598c7ae69d80d6cebe4faf329680ddadb6c2621ad8235f0f999e37a9'
  *    }
  *  ]
  *}
@@ -177,6 +291,10 @@ function canonicalizeAndHashData(
  */
 export async function verify(
   commitment: Commitment,
+  options: { keys?: SignedKey[]; offline?: boolean } = {
+    keys: undefined,
+    offline: false,
+  },
 ): Promise<CommitmentVerification> {
   try {
     // Verify the entire structure of the incoming commitment
@@ -184,13 +302,8 @@ export async function verify(
   } catch (error) {
     const commitmentResponse: CommitmentVerification = {
       type: 'commitment-verification',
-      testing: undefined,
-      verified: false,
-      signatureHashVerified: false,
-      signatureVerified: false,
-      signaturePublicKeyVerified: false,
-      proofs: [],
-      transactions: [],
+      ok: false,
+      offline: options.offline ? true : false,
     }
 
     if (error instanceof StructError) {
@@ -198,17 +311,15 @@ export async function verify(
       const { key, value, type } = error
 
       if (value === undefined) {
-        // eslint-disable-next-line prettier/prettier
-        commitmentResponse.error = `Commitment missing required attribute '${key as string}'`
+        // prettier-ignore
+        commitmentResponse.error = `missing required attribute '${key as string}'`
       } else if (type === 'never') {
-        // eslint-disable-next-line prettier/prettier
-        commitmentResponse.error = `Commitment has unknown attribute '${key as string}'`
+        commitmentResponse.error = `unknown attribute '${key as string}'`
       } else {
-        // eslint-disable-next-line prettier/prettier
-        commitmentResponse.error = `Commitment has invalid attribute for '${key as string}'`
+        commitmentResponse.error = `invalid attribute for '${key as string}'`
       }
     } else if (error instanceof Error) {
-      commitmentResponse.error = `Commitment has error ${error.message}`
+      commitmentResponse.error = `${error.message}`
     }
 
     assert(commitmentResponse, CommitmentVerificationStruct)
@@ -231,7 +342,7 @@ export async function verify(
     const proof: CommitProof = proofs[i]
 
     const vp: VerificationProof = {
-      verified: false,
+      ok: false,
       inputHash: proof.inputHash,
       merkleRoot: proof.merkleRoot,
     }
@@ -259,7 +370,7 @@ export async function verify(
         hexDecode(proof.inputHash),
       )
       if (isTreeVerified) {
-        vp.verified = true
+        vp.ok = true
       } else {
         throw new Error('tree verification failed')
       }
@@ -276,12 +387,14 @@ export async function verify(
 
   // Check if the 'verified' attribute is set to true for every transaction.
   const allProofsVerified = verificationProofs.every((v: VerificationProof) => {
-    return v.verified
+    return v.ok
   })
 
-  const proofMerkleRoots = proofs.map((proof: CommitProof) => {
-    return proof.merkleRoot
-  })
+  const proofMerkleRoots: string[] = proofs.map(
+    (proof: CommitProof): string => {
+      return proof.merkleRoot
+    },
+  )
 
   const verificationTransactions: VerificationTransaction[] = []
 
@@ -294,19 +407,78 @@ export async function verify(
         let verificationResult
         switch (transactionsForMerkleRoot[i].intent) {
           case 'xlm':
-            verificationResult = await verifyStellar(
-              transactionsForMerkleRoot[i],
-              decodedId.test, // verify against a test network?
-            )
+            if (options.offline === true) {
+              verificationResult = create(
+                {
+                  ok: true,
+                  offline: true,
+                  intent: 'xlm',
+                  inputHash: transactionsForMerkleRoot[i].inputHash,
+                  transactionId: transactionsForMerkleRoot[i].transactionId,
+                  blockId: transactionsForMerkleRoot[i].blockId,
+                },
+                VerificationTransactionStruct,
+              )
+            } else {
+              verificationResult = await verifyStellar(
+                transactionsForMerkleRoot[i],
+                decodedId.test, // verify against a test network?
+              )
+            }
             break
 
           case 'twtr':
+            if (options.offline === true) {
+              verificationResult = create(
+                {
+                  ok: true,
+                  offline: true,
+                  intent: 'twitter',
+                  inputHash: transactionsForMerkleRoot[i].inputHash,
+                  transactionId: transactionsForMerkleRoot[i].transactionId,
+                  blockId: transactionsForMerkleRoot[i].blockId,
+                },
+                VerificationTransactionStruct,
+              )
+            } else {
+              // TODO: verify twitter
+            }
             break
 
           case 'btc':
+            if (options.offline === true) {
+              verificationResult = create(
+                {
+                  ok: true,
+                  offline: true,
+                  intent: 'btc',
+                  inputHash: transactionsForMerkleRoot[i].inputHash,
+                  transactionId: transactionsForMerkleRoot[i].transactionId,
+                  blockId: transactionsForMerkleRoot[i].blockId,
+                },
+                VerificationTransactionStruct,
+              )
+            } else {
+              // TODO: verify btc
+            }
             break
 
           case 'eth':
+            if (options.offline === true) {
+              verificationResult = create(
+                {
+                  ok: true,
+                  offline: true,
+                  intent: 'eth',
+                  inputHash: transactionsForMerkleRoot[i].inputHash,
+                  transactionId: transactionsForMerkleRoot[i].transactionId,
+                  blockId: transactionsForMerkleRoot[i].blockId,
+                },
+                VerificationTransactionStruct,
+              )
+            } else {
+              // TODO: verify twitter
+            }
             break
 
           default:
@@ -319,7 +491,8 @@ export async function verify(
         if (error instanceof Error) {
           // Return an error object with the transaction's info and the error message.
           const v: VerificationTransaction = {
-            verified: false,
+            ok: false,
+            offline: options.offline ? true : false,
             intent: transactionsForMerkleRoot[i].intent,
             inputHash: transactionsForMerkleRoot[i].inputHash,
             transactionId: transactionsForMerkleRoot[i].transactionId,
@@ -332,10 +505,10 @@ export async function verify(
     }
   }
 
-  // Check if the 'verified' attribute is set to true for every transaction.
-  const allTransactionsVerified = verificationTransactions.every(
+  // Check if every transaction was ok, offline or not.
+  const allTransactionsVerifiedOrSkipped = verificationTransactions.every(
     (v: VerificationTransaction) => {
-      return v.verified
+      return v.ok
     },
   )
 
@@ -351,36 +524,39 @@ export async function verify(
 
   // Verify ed25519 signature on the commitment.
   const publicKey = base64Decode(commitment.signatures[0].publicKey)
-  const signatureVerified = verifyEd25519(
+  const commitmentSignatureVerified = verifyEd25519(
     publicKey,
     hexDecode(commitment.hash),
     base64Decode(commitment.signatures[0].signature),
   )
 
   // Verify that the public key used for the signature matches one
-  // of the known authoritative public keys.
-  const publicKeyVerified = await publishedPublicKeyMatchesPublicKey(publicKey)
+  // of the known authoritative public keys and is validly self-signed.
+  const publicKeyVerified: boolean = await publicKeyMatchesKnownPublicKey(
+    publicKey,
+    options.keys,
+    options.offline,
+  )
 
   const isVerified =
     allProofsVerified &&
-    allTransactionsVerified &&
+    allTransactionsVerifiedOrSkipped &&
     canonicalDataMatchesHash &&
     publicKeyVerified &&
-    signatureVerified
+    commitmentSignatureVerified
 
   const verificationResult: CommitmentVerification = {
     type: 'commitment-verification',
-    testing: decodedId.test,
-    verified: isVerified,
-    signatureHashVerified: canonicalDataMatchesHash,
-    signatureVerified: signatureVerified,
-    signaturePublicKeyVerified: publicKeyVerified,
+    ok: isVerified,
+    offline: options.offline ? true : false,
+    testEnv: decodedId.test,
+    signature: {
+      hash: canonicalDataMatchesHash,
+      publicKey: publicKeyVerified,
+      verified: commitmentSignatureVerified,
+    },
     proofs: verificationProofs,
     transactions: verificationTransactions,
-  }
-
-  if (!verificationResult.verified) {
-    verificationResult.error = `Commitment verification failed, failure points indicated where 'verified' is 'false'.`
   }
 
   assert(verificationResult, CommitmentVerificationStruct)
@@ -389,13 +565,40 @@ export async function verify(
 
 /**
  * Predicate function to check if a commitment is valid. Throws no Errors.
- * @param commitment A commitment object to verify.
+ * @param commitment A commitment object to verify online.
  * @returns A promise that resolves to a boolean indicating if the commitment is valid.
  */
-export async function isVerified(commitment: Commitment): Promise<boolean> {
+export async function isVerified(
+  commitment: Commitment,
+  options?: { keys?: SignedKey[] },
+): Promise<boolean> {
   try {
-    const verification: CommitmentVerification = await verify(commitment)
-    return verification.verified
+    const verification: CommitmentVerification = await verify(commitment, {
+      keys: options?.keys,
+      offline: false,
+    })
+
+    return verification.ok
+  } catch (error) {
+    return false
+  }
+}
+
+/**
+ * Predicate function to check if a commitment is valid while skipping any Internet fetches. Throws no Errors.
+ * @param commitment A commitment object to verify offline.
+ * @returns A promise that resolves to a boolean indicating if the commitment is valid.
+ */
+export async function isVerifiedUnsafelyOffline(
+  commitment: Commitment,
+  options?: { keys?: SignedKey[] },
+): Promise<boolean> {
+  try {
+    const verification: CommitmentVerification = await verify(commitment, {
+      keys: options?.keys,
+      offline: true,
+    })
+    return verification.ok && verification.offline
   } catch (error) {
     return false
   }
@@ -403,20 +606,48 @@ export async function isVerified(commitment: Commitment): Promise<boolean> {
 
 /**
  * Assert that the commitment is valid. If not, throw an Error.
- * @param commitment A commitment object to verify.
+ * @param commitment A commitment object to verify online.
  * @returns A promise that resolves to void when the commitment is valid.
  */
-export async function assertVerified(commitment: Commitment): Promise<void> {
+export async function assertVerified(
+  commitment: Commitment,
+  options?: { keys?: SignedKey[] },
+): Promise<void> {
   try {
-    const verification: CommitmentVerification = await verify(commitment)
-    if (!verification.verified) {
+    const verification: CommitmentVerification = await verify(commitment, {
+      keys: options?.keys,
+      offline: false,
+    })
+    if (!verification.ok) {
       throw new Error(verification.error || 'Commitment is not valid')
     }
   } catch (error) {
     if (error instanceof Error) {
       throw new Error(`Commitment is not valid`)
-    } else {
-      throw new Error(`Commitment is not valid`)
+    }
+  }
+}
+
+/**
+ * Assert that the commitment is valid while skipping any Internet fetches. If not, throw an Error.
+ * @param commitment A commitment object to verify offline.
+ * @returns A promise that resolves to void when the commitment is valid.
+ */
+export async function assertVerifiedUnsafelyOffline(
+  commitment: Commitment,
+  options?: { keys?: SignedKey[] },
+): Promise<void> {
+  try {
+    const verification: CommitmentVerification = await verify(commitment, {
+      keys: options?.keys,
+      offline: true,
+    })
+    if (!verification.ok) {
+      throw new Error(verification.error || 'Commitment is not valid offline')
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Commitment is not valid offline`)
     }
   }
 }

@@ -1,0 +1,26 @@
+[
+  {
+    "handle": "a56faa2b",
+    "type": "ed25519",
+    "publicKey": "K546EiGp4vsAvvOLYA1m0XKyqc4RoJ+7qPoXZs4Z+NU=",
+    "environment": "development",
+    "expired": false,
+    "selfSignature": "Vj0A4kNa2a4tRLxOEPFwV7irNIGUoe7Q8SX1JfkRHeNea9M+3Q3vT+9n640mMJhm2nUIDvbCtmtB2xqGoqpmCQ=="
+  },
+  {
+    "handle": "f36947d3",
+    "type": "ed25519",
+    "publicKey": "2/N8KtnOq46WOvQay/cun/3vin7dYU0jtwliVf6g83s=",
+    "environment": "staging",
+    "expired": false,
+    "selfSignature": "lWxD/ujp9UdGkk2MsUUla1oAR3FopK8jCeE4eNfeS6HS/ue6dUk+vhoNI3zUNsGFlNXUzwskET/VtS8i5KgQCA=="
+  },
+  {
+    "handle": "b3395500",
+    "type": "ed25519",
+    "publicKey": "BnE/2AYhgMd0KY7tXdMfmRJPoPY4I5h7rhQf+9nswAQ=",
+    "environment": "production",
+    "expired": false,
+    "selfSignature": "yZG0mJUpeWdaayZMF70bHrBnjIYihmoZoiEbfciGxARvocmLp0JlKXaP5MtQGCd73yqjOHX1aZqHGOPise7fAw=="
+  }
+]

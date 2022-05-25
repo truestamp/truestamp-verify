@@ -219,7 +219,7 @@ export const CommitProofStruct = object({
 export type CommitProof = Infer<typeof CommitProofStruct>
 
 export const CommitTransactionStruct = object({
-  intent: enums(['xlm', 'twtr', 'eth', 'btc']),
+  intent: enums(['xlm', 'twitter', 'eth', 'btc']),
   inputHash: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
   transactionId: nonempty(string()),
   blockId: nonempty(string()),
@@ -248,7 +248,7 @@ export const CommitmentStruct = object({
 export type Commitment = Infer<typeof CommitmentStruct>
 
 export const VerificationProofStruct = object({
-  verified: boolean(),
+  ok: boolean(),
   inputHash: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
   merkleRoot: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
   error: optional(string()),
@@ -257,8 +257,9 @@ export const VerificationProofStruct = object({
 export type VerificationProof = Infer<typeof VerificationProofStruct>
 
 export const VerificationTransactionStruct = object({
-  intent: enums(['xlm', 'twtr', 'eth', 'btc']),
-  verified: boolean(),
+  intent: enums(['btc', 'eth', 'twitter', 'xlm']),
+  ok: boolean(),
+  offline: boolean(),
   inputHash: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
   transactionId: nonempty(string()),
   blockId: nonempty(string()),
@@ -274,13 +275,19 @@ export type VerificationTransaction = Infer<
 
 export const CommitmentVerificationStruct = object({
   type: enums(['commitment-verification']),
-  verified: boolean(),
-  signatureHashVerified: boolean(),
-  signatureVerified: boolean(),
-  signaturePublicKeyVerified: boolean(),
-  testing: optional(boolean()),
-  proofs: array(VerificationProofStruct),
-  transactions: array(VerificationTransactionStruct),
+  ok: boolean(),
+  offline: boolean(),
+  testEnv: optional(boolean()),
+  signature: optional(
+    object({
+      hash: boolean(),
+      publicKey: boolean(),
+      verified: boolean(),
+      error: optional(string()),
+    }),
+  ),
+  proofs: optional(nonempty(array(VerificationProofStruct))),
+  transactions: optional(nonempty(array(VerificationTransactionStruct))),
   error: optional(string()),
 })
 
