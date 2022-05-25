@@ -5,6 +5,8 @@ export {
   CommitmentVerificationStruct,
   SignedKey,
   SignedKeyStruct,
+  SignedKeys,
+  SignedKeysStruct,
 } from './modules/types'
 
 export {
