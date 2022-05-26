@@ -2,30 +2,36 @@
 
 import { DateTime } from 'luxon'
 import * as EmailValidator from 'email-validator'
+import isURI from '@stdlib/assert/is-uri'
+import { isValidUnsafely } from '@truestamp/truestamp-id'
+import { decode as base64Decode } from '@stablelib/base64'
 import { isIso3166Alpha2Code, Iso3166Alpha2Code } from 'iso-3166-ts'
 
-import isURI from '@stdlib/assert/is-uri'
-import { decode } from '@stablelib/base64'
 import {
   array,
-  boolean,
+  defaulted,
   define,
   enums,
+  integer,
+  lazy,
   nonempty,
+  nullable,
   object,
   omit,
-  optional,
   pattern,
   size,
   string,
+  trimmed,
+  union,
+  optional,
+  pick,
+  boolean,
   number,
   record,
-  trimmed,
   tuple,
   Infer,
+  Describe,
 } from 'superstruct'
-
-import { isValidUnsafely } from '@truestamp/truestamp-id'
 
 // SHA-1 -> 20 bytes
 // SHA-256 -> 32 bytes
@@ -36,49 +42,24 @@ export const REGEX_HASH_HEX_20_64 = /^(([a-f0-9]{2}){20,64})$/i
 // SHA-256 -> 32 bytes
 export const REGEX_HASH_HEX_32 = /^(([a-f0-9]{2}){32})$/i
 
-/**
- *  The names of the built-in hash functions supported by the library.
- * @ignore
- * */
-export const HASH_FUNCTION_NAMES: string[] = [
-  'sha224',
-  'sha256',
-  'sha384',
-  'sha512',
-  'sha512_256',
-  'sha3_224',
-  'sha3_256',
-  'sha3_384',
-  'sha3_512',
-]
+export interface HashType {
+  minBytes: number
+  maxBytes: number
+}
 
-// A valid ISO 8601 date string in UTC timezone Z or with no offset +00:00
-const iso8601UTC = () =>
-  define<string>('iso8601UTC', value => {
-    try {
-      if (typeof value === 'string') {
-        if (!value.endsWith('Z') && !value.endsWith('+00:00')) {
-          return false
-        }
+export interface HashTypes {
+  [key: string]: HashType
+}
 
-        const d = DateTime.fromISO(value, { zone: 'utc' })
-        return d.isValid && d.offsetNameShort === 'UTC'
-      } else {
-        return false
-      }
-    } catch (error) {
-      return false
-    }
-  })
-
-const truestampId = () =>
-  define<string>('truestampId', value => {
-    if (typeof value === 'string') {
-      return isValidUnsafely({ id: value })
-    } else {
-      return false
-    }
-  })
+// Limit the available hash types for now to those that are supported by the browser
+// and crypto.subtle.digest
+// https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/digest#syntax
+export const HASH_TYPES: HashTypes = {
+  'sha-1': { minBytes: 20, maxBytes: 20 },
+  'sha-256': { minBytes: 32, maxBytes: 32 },
+  'sha-384': { minBytes: 48, maxBytes: 48 },
+  'sha-512': { minBytes: 64, maxBytes: 64 },
+}
 
 const email = () =>
   define<string>('email', value => {
@@ -95,13 +76,10 @@ const email = () =>
 
 const base64 = () =>
   define<string>('base64', value => {
-    if (typeof value === 'string') {
-      decode(value)
-    }
-
     try {
       if (typeof value === 'string') {
-        decode(value)
+        // if it safely decodes, then it is base64
+        base64Decode(value)
         return true
       } else {
         return false
@@ -116,6 +94,39 @@ const URI = () =>
     try {
       if (typeof value === 'string') {
         return isURI(value)
+      } else {
+        return false
+      }
+    } catch (error) {
+      return false
+    }
+  })
+
+// A valid ISO 8601 date string or any precision in any timezone
+const iso8601 = () =>
+  define<string>('iso8601', value => {
+    try {
+      if (typeof value === 'string') {
+        return DateTime.fromISO(value).isValid
+      } else {
+        return false
+      }
+    } catch (error) {
+      return false
+    }
+  })
+
+// A valid ISO 8601 date string in UTC timezone Z or with no offset +00:00
+const iso8601UTC = () =>
+  define<string>('iso8601UTC', value => {
+    try {
+      if (typeof value === 'string') {
+        if (!value.endsWith('Z') && !value.endsWith('+00:00')) {
+          return false
+        }
+
+        const d = DateTime.fromISO(value, { zone: 'utc' })
+        return d.isValid && d.offsetNameShort === 'UTC'
       } else {
         return false
       }
@@ -140,11 +151,54 @@ const iso3166Alpha2Code = () =>
     }
   })
 
+const truestampId = () =>
+  define<string>('truestampId', value => {
+    if (typeof value === 'string') {
+      return isValidUnsafely({ id: value })
+    } else {
+      return false
+    }
+  })
+
+const latitude = () =>
+  define<string>('latitude', value => {
+    try {
+      if (value && typeof value === 'string') {
+        const decimalLatLongValueString = /^[-+]?[0-9]*\.?[0-9]+$/
+        if (!decimalLatLongValueString.test(value)) {
+          return false
+        }
+        const valueFloat = parseFloat(value)
+        return valueFloat >= -90 && valueFloat <= 90 ? true : false
+      }
+      return false
+    } catch (error) {
+      return false
+    }
+  })
+
+const longitude = () =>
+  define<string>('longitude', value => {
+    try {
+      if (value && typeof value === 'string') {
+        const decimalLatLongValueString = /^[-+]?[0-9]*\.?[0-9]+$/
+        if (!decimalLatLongValueString.test(value)) {
+          return false
+        }
+        const valueFloat = parseFloat(value)
+        return valueFloat >= -180 && valueFloat <= 180 ? true : false
+      }
+      return false
+    } catch (error) {
+      return false
+    }
+  })
+
 // Universal Postal Union (UPU) S42 International Addressing Standards
 // https://www.upu.int/UPU/media/upu/documents/PostCode/S42_International-Addressing-Standards.pdf
 // https://www.upu.int/UPU/media/upu/documents/PostCode/AddressElementsFormattingAnInternationalAdressEn.pdf
 export const AddressStruct = object({
-  type: enums(['address']),
+  type: defaulted(enums(['address']), 'address'),
   streetNo: optional(size(trimmed(string()), 1, 8)),
   streetName: optional(size(trimmed(string()), 1, 64)),
   streetType: optional(size(trimmed(string()), 1, 16)),
@@ -157,8 +211,31 @@ export const AddressStruct = object({
 
 export type Address = Infer<typeof AddressStruct>
 
+// A Location on Earth where the data structure is aligned with the iOS CoreLocation framework
+// https://developer.apple.com/documentation/corelocation
+// It is presumed that the location is derived from a device's GPS or other location sensor.
+export const LocationStruct = object({
+  type: defaulted(enums(['location']), 'location'),
+  coordinate: object({ latitude: latitude(), longitude: longitude() }), // coordinate in decimal degrees(WGS84): ["38.8895563", "-77.0352546"]
+  altitude: optional(size(number(), -100000, 100000)), // The altitude above mean sea level associated with a location, measured in meters.
+  ellipsoidalAltitude: optional(size(number(), -100000, 100000)), // The altitude as a height above the World Geodetic System 1984 (WGS84) ellipsoid, measured in meters.
+  floor: optional(size(integer(), 0, 1000)), // The logical floor of the building in which the user is located. If floor information is not available for the current location, the value of this property is nil
+  horizontalAccuracy: optional(size(number(), -100000, 100000)), // The radius of uncertainty for the location, measured in meters. The location’s latitude and longitude identify the center of the circle, and this value indicates the radius of that circle. A negative value indicates that the latitude and longitude are invalid.
+  verticalAccuracy: optional(size(number(), -100000, 100000)), // The validity of the altitude values, and their estimated uncertainty, measured in meters. A positive verticalAccuracy value represents the estimated uncertainty associated with altitude and ellipsoidalAltitude. This value is available whenever altitude values are available. If verticalAccuracy is 0 or a negative number, altitude and ellipsoidalAltitude values are invalid. If verticalAccuracy is a positive number, altitude and ellipsoidalAltitude values are valid.
+  timestamp: optional(trimmed(iso8601())), // The time at which the location was determined.
+  speed: optional(size(number(), -10000, 10000)), // The instantaneous speed of the device, measured in meters per second. This value reflects the instantaneous speed of the device as it moves in the direction of its current heading. A negative value indicates an invalid speed. Because the actual speed can change many times between the delivery of location events, use this property for informational purposes only.
+  speedAccuracy: optional(size(number(), -10000, 10000)), // The accuracy of the speed value, measured in meters per second. When this property contains 0 or a positive number, the value in the speed property is plus or minus the specified number of meters per second. When this property contains a negative number, the value in the speed property is invalid.
+  course: optional(size(number(), -360, 360)), // The direction in which the device is traveling, measured in degrees and relative to due north. Course values are measured in degrees starting at due north and continue clockwise around the compass. Thus, north is 0 degrees, east is 90 degrees, south is 180 degrees, and so on. Course values may not be available on all devices. A negative value indicates that the course information is invalid.
+  courseAccuracy: optional(size(number(), -360, 360)), // The accuracy of the course value, measured in degrees. When this property contains 0 or a positive number, the value in the course property is plus or minus the specified number degrees, modulo 360. When this property contains a negative number, the value in the course property is invalid.
+  magneticHeading: optional(size(number(), 0, 359)), // Heading relative to the magnetic North Pole, which is different from the geographic North Pole. The value 0 means the device is pointed toward magnetic north, 90 means it is pointed east, 180 means it is pointed south, and so on.
+  headingAccuracy: optional(size(number(), -180, 180)), // A positive value in this property represents the potential error between the value reported by the magneticHeading property and the actual direction of magnetic north. Thus, the lower the value of this property, the more accurate the heading. A negative value means that the reported heading is invalid, which can occur when the device is uncalibrated or there is strong interference from local magnetic fields.
+  trueHeading: optional(size(number(), 0, 359)), // Heading relative to the geographic North Pole. The value 0 means the device is pointed toward true north, 90 means it is pointed due east, 180 means it is pointed due south, and so on.
+})
+
+export type Location = Infer<typeof LocationStruct>
+
 export const PersonStruct = object({
-  type: enums(['person']),
+  type: defaulted(enums(['person']), 'person'),
   givenName: optional(size(trimmed(string()), 1, 32)),
   surname: optional(size(trimmed(string()), 1, 32)),
   organizationName: optional(size(trimmed(string()), 1, 64)),
@@ -170,8 +247,31 @@ export const PersonStruct = object({
 
 export type Person = Infer<typeof PersonStruct>
 
+// Recursive JSON type: https://devblogs.microsoft.com/typescript/announcing-typescript-3-7/#more-recursive-type-aliases
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | Json[]
+  | { [key: string]: Json }
+
+const JsonStruct: Describe<Json> = nullable(
+  union([
+    string(),
+    number(),
+    boolean(),
+    nullable(string()),
+    array(lazy(() => JsonStruct)),
+    record(
+      string(),
+      lazy(() => JsonStruct),
+    ),
+  ]),
+)
+
 export const SignatureStruct = object({
-  type: enums(['signature']),
+  type: defaulted(enums(['signature']), 'signature'),
   publicKey: base64(),
   signature: base64(),
   signatureType: enums(['ed25519']),
@@ -179,6 +279,113 @@ export const SignatureStruct = object({
 })
 
 export type Signature = Infer<typeof SignatureStruct>
+
+// Incoming Cloudflare request properties
+// https://developers.cloudflare.com/workers/runtime-apis/request/#incomingrequestcfproperties
+export const ItemRequestPropsStruct = object({
+  type: defaulted(enums(['item-req-props']), 'item-req-props'),
+  asn: optional(nullable(union([integer(), string()]))),
+  colo: optional(nullable(nonempty(string()))),
+  country: optional(nullable(nonempty(string()))),
+  city: optional(nullable(nonempty(string()))),
+  continent: optional(nullable(nonempty(string()))),
+  latitude: optional(nullable(nonempty(string()))),
+  longitude: optional(nullable(nonempty(string()))),
+  postalCode: optional(nullable(nonempty(string()))),
+  metroCode: optional(nullable(nonempty(string()))),
+  region: optional(nullable(nonempty(string()))),
+  regionCode: optional(nullable(nonempty(string()))),
+  timezone: optional(nullable(nonempty(string()))),
+})
+
+export type ItemRequestProps = Infer<typeof ItemRequestPropsStruct>
+
+export const ItemDataStruct = object({
+  type: defaulted(enums(['item-data']), 'item-data'),
+  people: optional(nonempty(array(PersonStruct))),
+  address: optional(AddressStruct),
+  location: optional(LocationStruct),
+  timestamp: optional(trimmed(iso8601())),
+  content: JsonStruct, // Arbitrary content, must be serializable to valid JSON
+})
+
+export type ItemData = Infer<typeof ItemDataStruct>
+
+// User submitted Item
+// An Item is a wrapper around ItemData, with a hash and optional signature over the ItemData
+// The Item will be decorated with additional properties, such as the Cloudflare worker request properties
+// and the latest entropy hash value from the Observable Entropy project.
+export const ItemStruct = object({
+  type: defaulted(enums(['item']), 'item'),
+  hash: pattern(size(trimmed(string()), 20 * 2, 64 * 2), REGEX_HASH_HEX_20_64), // MUST be h(canonify(data))
+  hashType: enums(Object.keys(HASH_TYPES)),
+  signatures: optional(nonempty(array(SignatureStruct))), // One, or more, sign(hash||hashType)
+  data: optional(nonempty(array(ItemDataStruct))),
+  request: optional(ItemRequestPropsStruct), // Cloudflare request properties
+  observableEntropy: optional(
+    pattern(size(trimmed(string()), 32 * 2), REGEX_HASH_HEX_32),
+  ), // Observable Entropy : latest SHA-256 hash : https://github.com/truestamp/observable-entropy/blob/main/README.md
+})
+
+export type Item = Infer<typeof ItemStruct>
+
+// A subset of ItemStruct, used to validate user provided input
+export const ItemRequestStruct = pick(ItemStruct, [
+  'hash',
+  'hashType',
+  'signatures',
+  'data',
+])
+
+export type ItemRequest = Infer<typeof ItemRequestStruct>
+
+// An Envelope is a wrapper around an Item, with a hash and signature over the Item
+export const EnvelopeStruct = object({
+  type: defaulted(enums(['envelope']), 'envelope'),
+  owner: string(), // DB only
+  ulid: string(), // DB only
+  id: truestampId(), // Response only
+  hash: pattern(string(), REGEX_HASH_HEX_32), // MUST be h(canonify(data))
+  hashType: enums(['sha-256']),
+  signatures: nonempty(array(SignatureStruct)), // One, or more, sign(hash||hashType)
+  data: ItemStruct,
+  timestamp: iso8601UTC(), // Response only
+})
+
+export type Envelope = Infer<typeof EnvelopeStruct>
+
+// A subset of EnvelopeStruct, used to send the envelope to the database
+export const EnvelopeDbStruct = omit(EnvelopeStruct, ['id', 'timestamp'])
+
+export type EnvelopeDb = Infer<typeof EnvelopeDbStruct>
+
+// A subset of EnvelopeStruct, used to respond to user requests
+export const EnvelopeResponseStruct = omit(EnvelopeStruct, ['owner', 'ulid'])
+
+export type EnvelopeResponse = Infer<typeof EnvelopeResponseStruct>
+
+export const SNSTopicMessageStruct = object({
+  owner: optional(nonempty(string())),
+  inputHash: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
+})
+
+export type SNSTopicMessage = Infer<typeof SNSTopicMessageStruct>
+
+/**
+ *  The names of the built-in hash functions supported by the library.
+ * @ignore
+ * */
+export const HASH_FUNCTION_NAMES: string[] = [
+  'sha224',
+  'sha256',
+  'sha384',
+  'sha512',
+  'sha512_256',
+  'sha3_224',
+  'sha3_256',
+  'sha3_384',
+  'sha3_512',
+]
 
 /**
  * The struct that defines the shape of one layer of an Object encoded inclusion proof.
@@ -219,7 +426,7 @@ export const CommitProofStruct = object({
 export type CommitProof = Infer<typeof CommitProofStruct>
 
 export const CommitTransactionStruct = object({
-  intent: enums(['xlm', 'twitter', 'eth', 'btc']),
+  intent: enums(['btc', 'eth', 'twitter', 'xlm']),
   inputHash: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
   transactionId: nonempty(string()),
   blockId: nonempty(string()),
@@ -237,7 +444,7 @@ export const CommitmentDataStruct = object({
 export type CommitmentData = Infer<typeof CommitmentDataStruct>
 
 export const CommitmentStruct = object({
-  type: enums(['commitment']),
+  type: defaulted(enums(['commitment']), 'commitment'),
   hash: pattern(string(), REGEX_HASH_HEX_32), // MUST be h(canonify(data))
   hashType: enums(['sha-256']),
   signatures: nonempty(array(SignatureStruct)), // One, or more, sign(hash||hashType)
@@ -247,6 +454,17 @@ export const CommitmentStruct = object({
 
 export type Commitment = Infer<typeof CommitmentStruct>
 
+export const ULIDResponseStruct = object({
+  t: number(),
+  ts: iso8601UTC(),
+  ulid: string(),
+})
+
+export type ULIDResponse = Infer<typeof ULIDResponseStruct>
+
+export const ULIDResponseCollectionStruct = array(ULIDResponseStruct)
+
+export type ULIDResponseCollection = Infer<typeof ULIDResponseCollectionStruct>
 export const VerificationProofStruct = object({
   ok: boolean(),
   inputHash: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
