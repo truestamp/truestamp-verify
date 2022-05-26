@@ -493,6 +493,7 @@ export type VerificationTransaction = Infer<
 
 export const CommitmentVerificationStruct = object({
   type: enums(['commitment-verification']),
+  id: truestampId(),
   ok: boolean(),
   offline: boolean(),
   testEnv: optional(boolean()),

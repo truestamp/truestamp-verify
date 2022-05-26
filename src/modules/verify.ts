@@ -22,7 +22,6 @@ import {
   CommitmentVerificationStruct,
   SignedKey,
   SignedKeyStruct,
-  SignedKeys,
   SignedKeysStruct,
   UnsignedKey,
   UnsignedKeyStruct,
@@ -292,6 +291,7 @@ export async function verify(
     const commitmentResponse: CommitmentVerification = {
       type: 'commitment-verification',
       ok: false,
+      id: commitment.data.id,
       offline: options.offline ? true : false,
     }
 
@@ -537,6 +537,7 @@ export async function verify(
   const verificationResult: CommitmentVerification = {
     type: 'commitment-verification',
     ok: isVerified,
+    id: commitment.data.id,
     offline: options.offline ? true : false,
     testEnv: decodedId.test,
     signature: {
