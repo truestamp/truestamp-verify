@@ -3,7 +3,7 @@
 import { DateTime } from 'luxon'
 import * as EmailValidator from 'email-validator'
 import isURI from '@stdlib/assert/is-uri'
-import { isValidUnsafely } from '@truestamp/truestamp-id'
+import { isValidUnsafely } from '@truestamp/id'
 import { decode as base64Decode } from '@stablelib/base64'
 import { isIso3166Alpha2Code, Iso3166Alpha2Code } from 'iso-3166-ts'
 

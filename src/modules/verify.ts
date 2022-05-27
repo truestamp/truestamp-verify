@@ -2,7 +2,7 @@
 
 import { assert, create, is, StructError } from 'superstruct'
 import { sha256, Tree } from '@truestamp/tree'
-import { decodeUnsafely, IdV1DecodeUnsafely } from '@truestamp/truestamp-id'
+import { decodeUnsafely, IdV1DecodeUnsafely } from '@truestamp/id'
 import { canonify } from '@truestamp/canonify'
 import { encode as hexEncode, decode as hexDecode } from '@stablelib/hex'
 import { decode as base64Decode } from '@stablelib/base64'
