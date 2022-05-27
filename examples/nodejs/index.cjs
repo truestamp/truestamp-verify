@@ -4,7 +4,7 @@
 //   npm run build (in the root of the repository)
 //   node examples/nodejs/index.cjs
 
-const { assertVerified, assertVerifiedUnsafelyOffline, isVerified, isVerifiedUnsafelyOffline, verify } = require('../../lib/index.cjs')
+const { assertVerified, assertVerifiedUnsafelyOffline, isVerified, isVerifiedUnsafelyOffline, verify, verifyUnsafelyOffline } = require('../../lib/index.cjs')
 
 // Substitute with a Truestamp commitment object to be verified.
 const commitmentSample = require('../commitment.json')
@@ -16,15 +16,14 @@ async function run() {
   // and a summary of what this commitment attests to.
   // It also provides pointers to web URL's (e.g. blockchain explorers)
   // where commitments can be manually verified by comparing a hash.
-  // Will throw an Error if there is a failure to verify.
-  console.time('verify (online)')
+  console.time('verify')
   console.log(await verify(commitmentSample))
-  console.timeEnd('verify (online)')
+  console.timeEnd('verify')
 
   // Offline verification:
-  console.time('verify (offline)')
-  console.log(await verify(commitmentSample, { offline: true }))
-  console.timeEnd('verify (offline)')
+  console.time('verifyUnsafelyOffline')
+  console.log(await verifyUnsafelyOffline(commitmentSample))
+  console.timeEnd('verifyUnsafelyOffline')
 
   // 2) Predicate function (boolean)
   // Resolves to boolean `true` or `false` and will not throw Errors
@@ -45,10 +44,10 @@ async function run() {
   // or external service verification failure. Resolves
   // to `void` if verified.
   await assertVerified(commitmentSample)
-  console.log('assertVerified() : passed')
+  console.log('assertVerified() : verified')
 
   await assertVerifiedUnsafelyOffline(commitmentSample)
-  console.log('assertVerifiedUnsafelyOffline() : passed')
+  console.log('assertVerifiedUnsafelyOffline() : verified')
 }
 
 run().then(() => {

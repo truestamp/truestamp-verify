@@ -248,13 +248,7 @@ export const PersonStruct = object({
 export type Person = Infer<typeof PersonStruct>
 
 // Recursive JSON type: https://devblogs.microsoft.com/typescript/announcing-typescript-3-7/#more-recursive-type-aliases
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | Json[]
-  | { [key: string]: Json }
+export type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
 
 const JsonStruct: Describe<Json> = nullable(
   union([
@@ -322,20 +316,13 @@ export const ItemStruct = object({
   signatures: optional(nonempty(array(SignatureStruct))), // One, or more, sign(hash||hashType)
   data: optional(nonempty(array(ItemDataStruct))),
   request: optional(ItemRequestPropsStruct), // Cloudflare request properties
-  observableEntropy: optional(
-    pattern(size(trimmed(string()), 32 * 2), REGEX_HASH_HEX_32),
-  ), // Observable Entropy : latest SHA-256 hash : https://github.com/truestamp/observable-entropy/blob/main/README.md
+  observableEntropy: optional(pattern(size(trimmed(string()), 32 * 2), REGEX_HASH_HEX_32)), // Observable Entropy : latest SHA-256 hash : https://github.com/truestamp/observable-entropy/blob/main/README.md
 })
 
 export type Item = Infer<typeof ItemStruct>
 
 // A subset of ItemStruct, used to validate user provided input
-export const ItemRequestStruct = pick(ItemStruct, [
-  'hash',
-  'hashType',
-  'signatures',
-  'data',
-])
+export const ItemRequestStruct = pick(ItemStruct, ['hash', 'hashType', 'signatures', 'data'])
 
 export type ItemRequest = Infer<typeof ItemRequestStruct>
 
@@ -375,17 +362,7 @@ export type SNSTopicMessage = Infer<typeof SNSTopicMessageStruct>
  *  The names of the built-in hash functions supported by the library.
  * @ignore
  * */
-export const HASH_FUNCTION_NAMES: string[] = [
-  'sha224',
-  'sha256',
-  'sha384',
-  'sha512',
-  'sha512_256',
-  'sha3_224',
-  'sha3_256',
-  'sha3_384',
-  'sha3_512',
-]
+export const HASH_FUNCTION_NAMES: string[] = ['sha224', 'sha256', 'sha384', 'sha512', 'sha512_256', 'sha3_224', 'sha3_256', 'sha3_384', 'sha3_512']
 
 /**
  * The struct that defines the shape of one layer of an Object encoded inclusion proof.
@@ -487,9 +464,7 @@ export const VerificationTransactionStruct = object({
   error: optional(string()),
 })
 
-export type VerificationTransaction = Infer<
-  typeof VerificationTransactionStruct
->
+export type VerificationTransaction = Infer<typeof VerificationTransactionStruct>
 
 export const CommitmentVerificationStruct = object({
   type: enums(['commitment-verification']),

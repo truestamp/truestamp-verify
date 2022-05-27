@@ -9,10 +9,4 @@ export {
   SignedKeysStruct,
 } from './modules/types'
 
-export {
-  verify,
-  isVerified,
-  isVerifiedUnsafelyOffline,
-  assertVerified,
-  assertVerifiedUnsafelyOffline,
-} from './modules/verify'
+export { verify, verifyUnsafelyOffline, isVerified, isVerifiedUnsafelyOffline, assertVerified, assertVerifiedUnsafelyOffline } from './modules/verify'
