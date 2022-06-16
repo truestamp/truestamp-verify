@@ -414,6 +414,7 @@ export type CommitTransaction = Infer<typeof CommitTransactionStruct>
 export const CommitmentDataStruct = object({
   id: truestampId(),
   submittedAt: iso8601UTC(),
+  item: ItemStruct,
   proofs: array(CommitProofStruct),
   transactions: record(string(), array(CommitTransactionStruct)),
 })
@@ -480,6 +481,7 @@ export const CommitmentVerificationStruct = object({
       error: optional(string()),
     }),
   ),
+  item: optional(ItemStruct),
   proofs: optional(nonempty(array(VerificationProofStruct))),
   transactions: optional(nonempty(array(VerificationTransactionStruct))),
   error: optional(string()),

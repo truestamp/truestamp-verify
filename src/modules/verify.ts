@@ -392,6 +392,7 @@ async function doVerification(commitment: Commitment, keys: SignedKeys | undefin
       publicKey: publicKeyVerified,
       verified: commitmentSignatureVerified,
     },
+    item: commitment.data.item,
     proofs: verificationProofs,
     transactions: verificationTransactions,
   }

@@ -17,12 +17,12 @@ async function run() {
   // It also provides pointers to web URL's (e.g. blockchain explorers)
   // where commitments can be manually verified by comparing a hash.
   console.time('verify')
-  console.log(await verify(commitmentSample))
+  console.log(JSON.stringify(await verify(commitmentSample), null, 2))
   console.timeEnd('verify')
 
   // Offline verification:
   console.time('verifyUnsafelyOffline')
-  console.log(await verifyUnsafelyOffline(commitmentSample))
+  console.log(JSON.stringify(await verifyUnsafelyOffline(commitmentSample), null, 2))
   console.timeEnd('verifyUnsafelyOffline')
 
   // 2) Predicate function (boolean)
