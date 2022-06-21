@@ -198,7 +198,6 @@ const longitude = () =>
 // https://www.upu.int/UPU/media/upu/documents/PostCode/S42_International-Addressing-Standards.pdf
 // https://www.upu.int/UPU/media/upu/documents/PostCode/AddressElementsFormattingAnInternationalAdressEn.pdf
 export const AddressStruct = object({
-  type: defaulted(enums(['address']), 'address'),
   streetNo: optional(size(trimmed(string()), 1, 8)),
   streetName: optional(size(trimmed(string()), 1, 64)),
   streetType: optional(size(trimmed(string()), 1, 16)),
@@ -215,7 +214,6 @@ export type Address = Infer<typeof AddressStruct>
 // https://developer.apple.com/documentation/corelocation
 // It is presumed that the location is derived from a device's GPS or other location sensor.
 export const LocationStruct = object({
-  type: defaulted(enums(['location']), 'location'),
   coordinate: object({ latitude: latitude(), longitude: longitude() }), // coordinate in decimal degrees(WGS84): ["38.8895563", "-77.0352546"]
   altitude: optional(size(number(), -100000, 100000)), // The altitude above mean sea level associated with a location, measured in meters.
   ellipsoidalAltitude: optional(size(number(), -100000, 100000)), // The altitude as a height above the World Geodetic System 1984 (WGS84) ellipsoid, measured in meters.
@@ -235,7 +233,6 @@ export const LocationStruct = object({
 export type Location = Infer<typeof LocationStruct>
 
 export const PersonStruct = object({
-  type: defaulted(enums(['person']), 'person'),
   givenName: optional(size(trimmed(string()), 1, 32)),
   surname: optional(size(trimmed(string()), 1, 32)),
   organizationName: optional(size(trimmed(string()), 1, 64)),
@@ -265,7 +262,6 @@ const JsonStruct: Describe<Json> = nullable(
 )
 
 export const SignatureStruct = object({
-  type: defaulted(enums(['signature']), 'signature'),
   publicKey: base64(),
   signature: base64(),
   signatureType: enums(['ed25519']),
@@ -277,7 +273,6 @@ export type Signature = Infer<typeof SignatureStruct>
 // Incoming Cloudflare request properties
 // https://developers.cloudflare.com/workers/runtime-apis/request/#incomingrequestcfproperties
 export const ItemRequestPropsStruct = object({
-  type: defaulted(enums(['item-req-props']), 'item-req-props'),
   asn: optional(nullable(union([integer(), string()]))),
   colo: optional(nullable(nonempty(string()))),
   country: optional(nullable(nonempty(string()))),
@@ -295,54 +290,59 @@ export const ItemRequestPropsStruct = object({
 export type ItemRequestProps = Infer<typeof ItemRequestPropsStruct>
 
 export const ItemDataStruct = object({
-  type: defaulted(enums(['item-data']), 'item-data'),
-  people: optional(nonempty(array(PersonStruct))),
-  address: optional(AddressStruct),
-  location: optional(LocationStruct),
-  timestamp: optional(trimmed(iso8601())),
-  content: JsonStruct, // Arbitrary content, must be serializable to valid JSON
+  hash: pattern(size(trimmed(string()), 20 * 2, 64 * 2), REGEX_HASH_HEX_20_64),
+  hashType: enums(Object.keys(HASH_TYPES)),
+  people: optional(nonempty(array(PersonStruct))), // WHO?
+  description: optional(size(trimmed(string()), 1, 256)), // WHAT?
+  address: optional(AddressStruct), // WHERE?
+  location: optional(LocationStruct), // WHERE?
+  timestamp: optional(trimmed(iso8601())), // WHEN?
+  extra: optional(JsonStruct), // Extra arbitrary content, must be (de)serializable to valid JSON
 })
 
 export type ItemData = Infer<typeof ItemDataStruct>
 
-// User submitted Item
-// An Item is a wrapper around ItemData, with a hash and optional signature over the ItemData
-// The Item will be decorated with additional properties, such as the Cloudflare worker request properties
-// and the latest entropy hash value from the Observable Entropy project.
-export const ItemStruct = object({
-  type: defaulted(enums(['item']), 'item'),
-  hash: pattern(size(trimmed(string()), 20 * 2, 64 * 2), REGEX_HASH_HEX_20_64), // MUST be h(canonify(data))
-  hashType: enums(Object.keys(HASH_TYPES)),
-  signatures: optional(nonempty(array(SignatureStruct))), // One, or more, sign(hash||hashType)
-  data: optional(nonempty(array(ItemDataStruct))),
-  request: optional(ItemRequestPropsStruct), // Cloudflare request properties
+export const ItemSignalsStruct = object({
+  cf: optional(ItemRequestPropsStruct), // Cloudflare request properties
   observableEntropy: optional(pattern(size(trimmed(string()), 32 * 2), REGEX_HASH_HEX_32)), // Observable Entropy : latest SHA-256 hash : https://github.com/truestamp/observable-entropy/blob/main/README.md
+  submittedAt: iso8601UTC(), // When the item was submitted to the API
+})
+
+export type ItemSignals = Infer<typeof ItemSignalsStruct>
+
+// User submitted Item
+// An Item is a wrapper around ItemData
+// The Item will be decorated with additional trust 'signals' properties,
+// such as the Cloudflare worker request properties and the latest
+// observable entropy hash value.
+export const ItemStruct = object({
+  itemData: nonempty(array(ItemDataStruct)),
+  itemSignals: optional(ItemSignalsStruct), // Trust signals
+  itemDataSignatures: optional(nonempty(array(SignatureStruct))), // One, or more, user provided sign(hash(canonify(data))) signatures
 })
 
 export type Item = Infer<typeof ItemStruct>
 
-// A subset of ItemStruct, used to validate user provided input
-export const ItemRequestStruct = pick(ItemStruct, ['hash', 'hashType', 'signatures', 'data'])
+// A subset of ItemStruct, used to validate user provided input. These are the only
+// properties that are allowed to be set by the user.
+export const ItemRequestStruct = pick(ItemStruct, ['itemData', 'itemDataSignatures'])
 
 export type ItemRequest = Infer<typeof ItemRequestStruct>
 
 // An Envelope is a wrapper around an Item, with a hash and signature over the Item
 export const EnvelopeStruct = object({
-  type: defaulted(enums(['envelope']), 'envelope'),
+  version: defaulted(enums([1]), 1),
   owner: string(), // DB only
   ulid: string(), // DB only
   id: truestampId(), // Response only
-  hash: pattern(string(), REGEX_HASH_HEX_32), // MUST be h(canonify(data))
-  hashType: enums(['sha-256']),
-  signatures: nonempty(array(SignatureStruct)), // One, or more, sign(hash||hashType)
   data: ItemStruct,
-  timestamp: iso8601UTC(), // Response only
+  signatures: nonempty(array(SignatureStruct)), // One, or more, sign(h(canonify(data))) signatures
 })
 
 export type Envelope = Infer<typeof EnvelopeStruct>
 
 // A subset of EnvelopeStruct, used to send the envelope to the database
-export const EnvelopeDbStruct = omit(EnvelopeStruct, ['id', 'timestamp'])
+export const EnvelopeDbStruct = omit(EnvelopeStruct, ['id'])
 
 export type EnvelopeDb = Infer<typeof EnvelopeDbStruct>
 
@@ -413,8 +413,10 @@ export type CommitTransaction = Infer<typeof CommitTransactionStruct>
 
 export const CommitmentDataStruct = object({
   id: truestampId(),
-  submittedAt: iso8601UTC(),
-  item: ItemStruct,
+  version: defaulted(enums([1]), 1),
+  itemData: nonempty(array(ItemDataStruct)),
+  itemDataSignatures: optional(nonempty(array(SignatureStruct))), // One, or more, user provided sign(hash(canonify(data))) signatures
+  itemSignals: optional(ItemSignalsStruct), // Trust signals
   proofs: array(CommitProofStruct),
   transactions: record(string(), array(CommitTransactionStruct)),
 })
@@ -422,12 +424,8 @@ export const CommitmentDataStruct = object({
 export type CommitmentData = Infer<typeof CommitmentDataStruct>
 
 export const CommitmentStruct = object({
-  type: defaulted(enums(['commitment']), 'commitment'),
-  hash: pattern(string(), REGEX_HASH_HEX_32), // MUST be h(canonify(data))
-  hashType: enums(['sha-256']),
-  signatures: nonempty(array(SignatureStruct)), // One, or more, sign(hash||hashType)
-  data: CommitmentDataStruct,
-  timestamp: iso8601UTC(),
+  commitmentData: CommitmentDataStruct,
+  commitmentDataSignatures: nonempty(array(SignatureStruct)), // One, or more, sign(h(canonicalize(commitmentData))) signatures
 })
 
 export type Commitment = Infer<typeof CommitmentStruct>
@@ -468,20 +466,30 @@ export const VerificationTransactionStruct = object({
 export type VerificationTransaction = Infer<typeof VerificationTransactionStruct>
 
 export const CommitmentVerificationStruct = object({
-  type: enums(['commitment-verification']),
   id: truestampId(),
   ok: boolean(),
   offline: boolean(),
   testEnv: optional(boolean()),
-  signature: optional(
+  itemData: optional(
     object({
-      hash: boolean(),
-      publicKey: boolean(),
-      verified: boolean(),
-      error: optional(string()),
+      hash: pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32),
+      signaturesCount: number(),
+      signaturesVerified: boolean(),
     }),
   ),
-  item: optional(ItemStruct),
+  item: optional(
+    object({
+      hash: pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32),
+    }),
+  ),
+  commitmentData: optional(
+    object({
+      hash: pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32),
+      signaturesCount: number(),
+      signaturesVerified: boolean(),
+      signaturesPublicKeyVerified: boolean(),
+    }),
+  ),
   proofs: optional(nonempty(array(VerificationProofStruct))),
   transactions: optional(nonempty(array(VerificationTransactionStruct))),
   error: optional(string()),
@@ -515,4 +523,25 @@ export interface CanonicalHash {
   hash: Uint8Array
   hashHex: string
   hashType: string
+  canonicalData: string | undefined
 }
+
+export const EntropyResponseFileStruct = object({
+  name: string(),
+  hash: pattern(size(trimmed(string()), 32 * 2), REGEX_HASH_HEX_32),
+  hashType: enums(['sha256']),
+})
+
+export type EntropyResponseFile = Infer<typeof EntropyResponseFileStruct>
+
+export const EntropyResponseStruct = object({
+  hash: pattern(size(trimmed(string()), 32 * 2), REGEX_HASH_HEX_32),
+  hashType: enums(['sha256']),
+  hashIterations: number(),
+  createdAt: iso8601UTC(),
+  signature: base64(),
+  prevHash: optional(pattern(size(trimmed(string()), 32 * 2), REGEX_HASH_HEX_32)),
+  files: optional(array(EntropyResponseFileStruct)),
+})
+
+export type EntropyResponse = Infer<typeof EntropyResponseStruct>

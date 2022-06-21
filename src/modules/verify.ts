@@ -13,18 +13,18 @@ import { equal } from '@stablelib/constant-time'
 import {
   CanonicalHash,
   CommitmentData,
-  CommitmentDataStruct,
   Commitment,
   CommitmentStruct,
   CommitProof,
   CommitTransaction,
   CommitmentVerification,
   CommitmentVerificationStruct,
+  Item,
+  ItemData,
   SignedKey,
   SignedKeyStruct,
   SignedKeysStruct,
   UnsignedKey,
-  UnsignedKeyStruct,
   VerificationProof,
   VerificationTransaction,
   VerificationTransactionStruct,
@@ -169,32 +169,82 @@ async function publicKeyMatchesKnownPublicKey(publicKey: Uint8Array, keys?: Sign
  * @param data The data to canonicalize
  * @return The canonicalized data
  */
-function canonicalizeAndHashData(data: CommitmentData | UnsignedKey): CanonicalHash {
-  if (is(data, CommitmentDataStruct) || is(data, UnsignedKeyStruct)) {
-    const canonicalData = canonify(data)
+function canonicalizeAndHashData(data: Item | ItemData[] | CommitmentData | UnsignedKey): CanonicalHash {
+  const canonicalData = canonify(data)
 
-    const canonicalDataUint8Array = new TextEncoder().encode(canonicalData)
-    const hash: Uint8Array = stableSHA256(canonicalDataUint8Array)
-    const hashUint8Array: Uint8Array = new Uint8Array(hash)
-    const hashHex: string = hexEncode(hashUint8Array, true) // true = lowercase
-    return {
-      hash: hashUint8Array,
-      hashHex: hashHex,
-      hashType: 'sha-256',
-    }
+  const canonicalDataUint8Array = new TextEncoder().encode(canonicalData)
+  const hash: Uint8Array = stableSHA256(canonicalDataUint8Array)
+  const hashUint8Array: Uint8Array = new Uint8Array(hash)
+  const hashHex: string = hexEncode(hashUint8Array, true) // true = lowercase
+  return {
+    hash: hashUint8Array,
+    hashHex: hashHex,
+    hashType: 'sha-256',
+    canonicalData: canonicalData,
   }
-
-  throw new Error('Unsupported data type')
 }
 
 async function doVerification(commitment: Commitment, keys: SignedKeys | undefined, offline = false): Promise<CommitmentVerification> {
-  const { data: commitmentData } = commitment
-  const { proofs, transactions } = commitmentData
+  const { commitmentData, commitmentDataSignatures } = commitment
+  const { id, itemData, itemDataSignatures, itemSignals, proofs, transactions } = commitmentData
 
-  // Decode the commitment's ID.
+  // Decode the commitment's Id ('unsafely', since we can't validate HMAC here).
   const decodedId: IdV1DecodeUnsafely = decodeUnsafely({
-    id: commitmentData.id,
+    id: id,
   })
+
+  // //////////////////////////////////////////////////////////////////////////////
+  // Verify ItemData Signature(s)
+  // //////////////////////////////////////////////////////////////////////////////
+
+  // Canonicalize the Item data for signature verification.
+  const canonicalItemDataHash: CanonicalHash = canonicalizeAndHashData(itemData)
+
+  let itemDataSignaturesVerified = true
+
+  // Verify each ed25519 signature.
+  for (const sig of itemDataSignatures ?? []) {
+    const { publicKey, signature } = sig
+    const publicKeyDecoded: Uint8Array = base64Decode(publicKey)
+    itemDataSignaturesVerified = verifyEd25519(publicKeyDecoded, canonicalItemDataHash.hash, base64Decode(signature))
+  }
+
+  // //////////////////////////////////////////////////////////////////////////////
+  // Construct Item Hash to verify against first proof later
+  // //////////////////////////////////////////////////////////////////////////////
+
+  const item: Item = {
+    itemData: itemData,
+    itemDataSignatures: itemDataSignatures,
+    itemSignals: itemSignals,
+  }
+
+  const canonicalItemHash: CanonicalHash = canonicalizeAndHashData(item)
+
+  // //////////////////////////////////////////////////////////////////////////////
+  // Verify CommitmentData Signature(s)
+  // //////////////////////////////////////////////////////////////////////////////
+
+  // Canonicalize the Commitment data for signature verification.
+  const canonicalCommitmentDataHash: CanonicalHash = canonicalizeAndHashData(commitmentData)
+
+  let commitmentDataSignaturesVerified = false
+  let commitmentDataSignaturesVerifiedPublicKey = false
+
+  // Verify each ed25519 signature.
+  for (const sig of commitmentDataSignatures) {
+    const { publicKey, signature } = sig
+    const publicKeyDecoded: Uint8Array = base64Decode(publicKey)
+    commitmentDataSignaturesVerified = verifyEd25519(publicKeyDecoded, canonicalCommitmentDataHash.hash, base64Decode(signature))
+
+    // Verify that the public key used for the signature matches one
+    // of the known authoritative public keys and is validly self-signed.
+    commitmentDataSignaturesVerifiedPublicKey = await publicKeyMatchesKnownPublicKey(publicKeyDecoded, keys, offline)
+  }
+
+  // //////////////////////////////////////////////////////////////////////////////
+  // Verify Merkle Inclusion Proofs
+  // //////////////////////////////////////////////////////////////////////////////
 
   const verificationProofs: VerificationProof[] = []
 
@@ -203,10 +253,20 @@ async function doVerification(commitment: Commitment, keys: SignedKeys | undefin
   for (let i = 0; i < proofs.length; i++) {
     const proof: CommitProof = proofs[i]
 
+    // Also accepts an optional 'error' property.
     const vp: VerificationProof = {
       ok: false,
       inputHash: proof.inputHash,
       merkleRoot: proof.merkleRoot,
+    }
+
+    // Verify that the inputHash of the first proof matches the
+    // canonical hash of the Item data.
+    if (i === 0) {
+      if (proof.inputHash !== canonicalItemHash.hashHex) {
+        vp.error = `Proof [${i}] inputHash '${proof.inputHash}' must match hash of canonical itemData, itemSignatures, itemSignals [${canonicalItemHash.hashHex}]`
+        verificationProofs.push(vp)
+      }
     }
 
     // Proof 2..n inputHash must match the Merkle root of the previous proof
@@ -251,6 +311,10 @@ async function doVerification(commitment: Commitment, keys: SignedKeys | undefin
   const proofMerkleRoots: string[] = proofs.map((proof: CommitProof): string => {
     return proof.merkleRoot
   })
+
+  // //////////////////////////////////////////////////////////////////////////////
+  // Verify Commitment Transactions
+  // //////////////////////////////////////////////////////////////////////////////
 
   const verificationTransactions: VerificationTransaction[] = []
 
@@ -365,34 +429,36 @@ async function doVerification(commitment: Commitment, keys: SignedKeys | undefin
     return v.ok
   })
 
-  // Canonicalize the commitment data and make sure that the resulting hash
-  // matches the 'hash' property.
-  const commitmentDataCanonicalizedAndHashed = canonicalizeAndHashData(commitmentData)
+  // //////////////////////////////////////////////////////////////////////////////
+  // Construct Commitment Verification Result
+  // //////////////////////////////////////////////////////////////////////////////
 
-  const canonicalDataMatchesHash = equal(hexDecode(commitment.hash), hexDecode(commitmentDataCanonicalizedAndHashed.hashHex))
-
-  // Verify ed25519 signature on the commitment.
-  const publicKey = base64Decode(commitment.signatures[0].publicKey)
-  const commitmentSignatureVerified = verifyEd25519(publicKey, hexDecode(commitment.hash), base64Decode(commitment.signatures[0].signature))
-
-  // Verify that the public key used for the signature matches one
-  // of the known authoritative public keys and is validly self-signed.
-  const publicKeyVerified: boolean = await publicKeyMatchesKnownPublicKey(publicKey, keys, offline)
-
-  const isVerified = allProofsVerified && allTransactionsVerifiedOrSkipped && canonicalDataMatchesHash && publicKeyVerified && commitmentSignatureVerified
+  const isVerified: boolean =
+    itemDataSignaturesVerified &&
+    commitmentDataSignaturesVerified &&
+    commitmentDataSignaturesVerifiedPublicKey &&
+    allProofsVerified &&
+    allTransactionsVerifiedOrSkipped
 
   const verificationResult: CommitmentVerification = {
-    type: 'commitment-verification',
     ok: isVerified,
-    id: commitment.data.id,
+    id: id,
     offline: offline ? true : false,
     testEnv: decodedId.test,
-    signature: {
-      hash: canonicalDataMatchesHash,
-      publicKey: publicKeyVerified,
-      verified: commitmentSignatureVerified,
+    itemData: {
+      hash: canonicalItemDataHash.hashHex,
+      signaturesCount: itemDataSignatures ? itemDataSignatures.length : 0,
+      signaturesVerified: itemDataSignaturesVerified,
     },
-    item: commitment.data.item,
+    item: {
+      hash: canonicalItemHash.hashHex,
+    },
+    commitmentData: {
+      hash: canonicalCommitmentDataHash.hashHex,
+      signaturesCount: commitmentDataSignatures ? commitmentDataSignatures.length : 0,
+      signaturesVerified: commitmentDataSignaturesVerified,
+      signaturesPublicKeyVerified: commitmentDataSignaturesVerifiedPublicKey,
+    },
     proofs: verificationProofs,
     transactions: verificationTransactions,
   }
@@ -409,9 +475,8 @@ async function verifier(commitment: Commitment, keys: SignedKeys | undefined, of
     return await doVerification(commitment, keys, offline)
   } catch (error) {
     const errorStub: CommitmentVerification = {
-      type: 'commitment-verification',
       ok: false,
-      id: commitment.data.id,
+      id: commitment.commitmentData.id,
       offline: offline,
     }
 
@@ -451,50 +516,49 @@ async function verifier(commitment: Commitment, keys: SignedKeys | undefined, of
  * @example Sample output:
  * *
  * * ```typescript
- *{
- *  type: 'commitment-verification',
- *  ok: true,
- *  offline: false,
- *  testEnv: true,
- *  signature: { hash: true, publicKey: true, verified: true },
- *  proofs: [
- *    {
- *      ok: true,
- *      inputHash: 'b1fc469deae708277eb87b089800731a57f61ddbddf0c71332288397daffa8fa',
- *      merkleRoot: 'ebbe387c731b1fdcee412b4fc7c82d966cd0276e79c6a9c319e304dd78dedac4'
- *    },
- *    {
- *      ok: true,
- *      inputHash: 'ebbe387c731b1fdcee412b4fc7c82d966cd0276e79c6a9c319e304dd78dedac4',
- *      merkleRoot: '93c5277c0135e85b61a9798345e8c3ea21b17c0f85defe45e390b4758cf1b16b'
- *    },
- *    {
- *      ok: true,
- *      inputHash: '93c5277c0135e85b61a9798345e8c3ea21b17c0f85defe45e390b4758cf1b16b',
- *      merkleRoot: '333e65c8b3ee8c4a095dfb97890d295a0d36097cf03e391118f4a214e8c171a2'
- *    },
- *    {
- *      ok: true,
- *      inputHash: '333e65c8b3ee8c4a095dfb97890d295a0d36097cf03e391118f4a214e8c171a2',
- *      merkleRoot: '37aea4f6c62d1fb647fca9e13f90a474033fdd0102df00c80623ab8e6dd9aefe'
- *    }
- *  ],
- *  transactions: [
- *    {
- *      ok: true,
- *      offline: false,
- *      intent: 'xlm',
- *      inputHash: 'ebbe387c731b1fdcee412b4fc7c82d966cd0276e79c6a9c319e304dd78dedac4',
- *      transactionId: '3c702c91598c7ae69d80d6cebe4faf329680ddadb6c2621ad8235f0f999e37a9',
- *      blockId: '1071745',
- *      timestamp: '2022-05-20T14:33:03Z',
- *      urlApi: 'https://horizon-testnet.stellar.org/transactions/3c702c91598c7ae69d80d6cebe4faf329680ddadb6c2621ad8235f0f999e37a9',
- *      urlWeb: 'https://stellar.expert/explorer/testnet/tx/3c702c91598c7ae69d80d6cebe4faf329680ddadb6c2621ad8235f0f999e37a9'
- *    }
- *  ]
- *}
+ * {
+ *   ok: true,
+ *   id: 'T11_01G63P5WPW0CWJ7N6WGAXEXGJH_1655833818400000_A6D3501894C9D27D3A626B6E1ACFCD1B',
+ *   offline: false,
+ *   testEnv: true,
+ *   itemData: {
+ *     hash: 'c15fbfedf73881e7264ccefbabdcb679d247348e35dea14eba1d906c174c3e8e',
+ *     signaturesCount: 1,
+ *     signaturesVerified: true,
+ *   },
+ *   item: {
+ *     hash: '7901019d4f28788058e5e661e756d33049ad40f69dbf3057c8260f1dde8dfeb8',
+ *   },
+ *   commitmentData: {
+ *     hash: 'bf58d1780fe8a5fb30be1599781e96857bc21e3eb0a530f1c3d75b72d51833c9',
+ *     signaturesCount: 1,
+ *     signaturesVerified: true,
+ *     signaturesPublicKeyVerified: true,
+ *   },
+ *   proofs: [
+ *     {
+ *       ok: true,
+ *       inputHash: '7901019d4f28788058e5e661e756d33049ad40f69dbf3057c8260f1dde8dfeb8',
+ *       merkleRoot: '7d371488a002714c9d2efb7f86da7c289bd865d0b359a1dadd13966078f7abce',
+ *     },
+ *   ],
+ *   transactions: [
+ *     {
+ *       ok: true,
+ *       offline: false,
+ *       intent: 'xlm',
+ *       inputHash: '7d371488a002714c9d2efb7f86da7c289bd865d0b359a1dadd13966078f7abce',
+ *       transactionId: '09f0c766b0d393f27a7eddfceea46167106cd8fd4f21756196117876d5880503',
+ *       blockId: '1600114',
+ *       timestamp: '2022-06-21T17:52:06Z',
+ *       urlApi: 'https://horizon-testnet.stellar.org/transactions/09f0c766b0d393f27a7eddfceea46167106cd8fd4f21756196117876d5880503',
+ *       urlWeb: 'https://stellar.expert/explorer/testnet/tx/09f0c766b0d393f27a7eddfceea46167106cd8fd4f21756196117876d5880503',
+ *     },
+ *   ],
+ * }
  * ```
  */
+
 export async function verify(
   commitment: Commitment,
   options: { keys?: SignedKey[] } = {

@@ -3,7 +3,7 @@
 This library provides a TypeScript/JavaScript API for verifying
 [Truestamp](https://www.truestamp.com) Commitments.
 
-This library is intended to provide thorough cryptographic verification of
+This library provides a thorough cryptographic verification of
 Truestamp Commitments. Ideally, this verification is independent of, and without
 reliance on, Truestamp services or APIs. This library has no external
 dependencies.
@@ -30,6 +30,28 @@ property to indicated success or failure.
 
 Alternatively, there are functions that will only return a boolean, or throw an
 `Error` if there is any verification failure.
+
+## About Commitments
+
+A Truestamp Commitment is the cryptographic "glue" that binds your original data,
+and additional metadata, to one or more public blockchains.
+
+You'll note that commitments do not attest to the "answer" to a question. They are
+more analogous to the left side of a math equation. All of the elements are there to
+do the math and calculate an answer, and this calculated answer is then compared to
+what is found on the blockchain. The "math" is check along the way to ensure that
+a series of equations generate consistent results.
+
+If the verification of the Commitment is a match to what is found on the blockchain, we
+can be certain of the integrity of the data reflected in the Commitment.
+
+Once this verification of integrity is confirmed, the timestamp of the data
+can then be extracted from the blockchain block the data was committed to.
+
+If any part of the equation fails, or if the data was changed by even a single bit, then
+the Commitment will fail to be fully processed and return an error, or the expected data
+will not be found actually committed to the blockchain. In this case the commitment is
+considered invalid and the output of the verification functions will reflect that.
 
 ## Install
 
@@ -73,48 +95,50 @@ await assertVerified(commitment)
 
 A more detailed version of this example can be found in [examples/example.cjs].
 
-## Sample Output
+## Sample JSON Verifier Output
 
-```javascript
+The `ok` property will be set to true if the entirety of the Commitment is valid.
+
+If there are errors along the way that will be reflected in the verifier output.
+
+```json
 {
-  type: 'commitment-verification',
-  ok: true,
-  offline: false,
-  testEnv: true,
-  signature: { hash: true, publicKey: true, verified: true },
-  proofs: [
+  "ok": true,
+  "id": "T11_01G63P5WPW0CWJ7N6WGAXEXGJH_1655833818400000_A6D3501894C9D27D3A626B6E1ACFCD1B",
+  "offline": false,
+  "testEnv": true,
+  "itemData": {
+    "hash": "c15fbfedf73881e7264ccefbabdcb679d247348e35dea14eba1d906c174c3e8e",
+    "signaturesCount": 1,
+    "signaturesVerified": true
+  },
+  "item": {
+    "hash": "7901019d4f28788058e5e661e756d33049ad40f69dbf3057c8260f1dde8dfeb8"
+  },
+  "commitmentData": {
+    "hash": "bf58d1780fe8a5fb30be1599781e96857bc21e3eb0a530f1c3d75b72d51833c9",
+    "signaturesCount": 1,
+    "signaturesVerified": true,
+    "signaturesPublicKeyVerified": true
+  },
+  "proofs": [
     {
-      ok: true,
-      inputHash: 'b1fc469deae708277eb87b089800731a57f61ddbddf0c71332288397daffa8fa',
-      merkleRoot: 'ebbe387c731b1fdcee412b4fc7c82d966cd0276e79c6a9c319e304dd78dedac4'
-    },
-    {
-      ok: true,
-      inputHash: 'ebbe387c731b1fdcee412b4fc7c82d966cd0276e79c6a9c319e304dd78dedac4',
-      merkleRoot: '93c5277c0135e85b61a9798345e8c3ea21b17c0f85defe45e390b4758cf1b16b'
-    },
-    {
-      ok: true,
-      inputHash: '93c5277c0135e85b61a9798345e8c3ea21b17c0f85defe45e390b4758cf1b16b',
-      merkleRoot: '333e65c8b3ee8c4a095dfb97890d295a0d36097cf03e391118f4a214e8c171a2'
-    },
-    {
-      ok: true,
-      inputHash: '333e65c8b3ee8c4a095dfb97890d295a0d36097cf03e391118f4a214e8c171a2',
-      merkleRoot: '37aea4f6c62d1fb647fca9e13f90a474033fdd0102df00c80623ab8e6dd9aefe'
+      "ok": true,
+      "inputHash": "7901019d4f28788058e5e661e756d33049ad40f69dbf3057c8260f1dde8dfeb8",
+      "merkleRoot": "7d371488a002714c9d2efb7f86da7c289bd865d0b359a1dadd13966078f7abce"
     }
   ],
-  transactions: [
+  "transactions": [
     {
-      ok: true,
-      offline: false,
-      intent: 'xlm',
-      inputHash: 'ebbe387c731b1fdcee412b4fc7c82d966cd0276e79c6a9c319e304dd78dedac4',
-      transactionId: '3c702c91598c7ae69d80d6cebe4faf329680ddadb6c2621ad8235f0f999e37a9',
-      blockId: '1071745',
-      timestamp: '2022-05-20T14:33:03Z',
-      urlApi: 'https://horizon-testnet.stellar.org/transactions/3c702c91598c7ae69d80d6cebe4faf329680ddadb6c2621ad8235f0f999e37a9',
-      urlWeb: 'https://stellar.expert/explorer/testnet/tx/3c702c91598c7ae69d80d6cebe4faf329680ddadb6c2621ad8235f0f999e37a9'
+      "ok": true,
+      "offline": false,
+      "intent": "xlm",
+      "inputHash": "7d371488a002714c9d2efb7f86da7c289bd865d0b359a1dadd13966078f7abce",
+      "transactionId": "09f0c766b0d393f27a7eddfceea46167106cd8fd4f21756196117876d5880503",
+      "blockId": "1600114",
+      "timestamp": "2022-06-21T17:52:06Z",
+      "urlApi": "https://horizon-testnet.stellar.org/transactions/09f0c766b0d393f27a7eddfceea46167106cd8fd4f21756196117876d5880503",
+      "urlWeb": "https://stellar.expert/explorer/testnet/tx/09f0c766b0d393f27a7eddfceea46167106cd8fd4f21756196117876d5880503"
     }
   ]
 }
