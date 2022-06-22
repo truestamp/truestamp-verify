@@ -9,6 +9,8 @@ import { decode as base64Decode } from '@stablelib/base64'
 import { verify as verifyEd25519 } from '@stablelib/ed25519'
 import { hash as stableSHA256 } from '@stablelib/sha256'
 import { equal } from '@stablelib/constant-time'
+import { DateTime } from 'luxon'
+import unfetch from 'isomorphic-unfetch'
 
 import {
   CanonicalHash,
@@ -34,6 +36,7 @@ import {
 import { verifyStellar } from './verifyStellar'
 
 const KEY_SERVER_BASE_URL = 'https://keys.truestamp.com'
+const ENTROPY_SERVER_BASE_URL = 'https://entropy.truestamp.com'
 
 // Last updated: 2022-05-24
 const BACKUP_PUBLIC_KEYS: SignedKey[] = [
@@ -62,6 +65,12 @@ const BACKUP_PUBLIC_KEYS: SignedKey[] = [
     selfSignature: 'yZG0mJUpeWdaayZMF70bHrBnjIYihmoZoiEbfciGxARvocmLp0JlKXaP5MtQGCd73yqjOHX1aZqHGOPise7fAw==',
   },
 ]
+
+export function timestampMicrosecondsToISO(timestamp: number): string {
+  return DateTime.fromMillis(Math.floor(timestamp / 1000))
+    .toUTC()
+    .toISO()
+}
 
 /**
  * For a given public key, calculate its handle.
@@ -188,10 +197,18 @@ async function doVerification(commitment: Commitment, keys: SignedKeys | undefin
   const { commitmentData, commitmentDataSignatures } = commitment
   const { id, itemData, itemDataSignatures, itemSignals, proofs, transactions } = commitmentData
 
+  // //////////////////////////////////////////////////////////////////////////////
+  // Verify Id Validity
+  // //////////////////////////////////////////////////////////////////////////////
+
   // Decode the commitment's Id ('unsafely', since we can't validate HMAC here).
   const decodedId: IdV1DecodeUnsafely = decodeUnsafely({
     id: id,
   })
+
+  // Use this timestamp in the commitsTo field of the commitment verification output
+  // as it represents the `submittedAt` timestamp.
+  const decodedIdTimestampISO8601: string = timestampMicrosecondsToISO(decodedId.timestamp)
 
   // //////////////////////////////////////////////////////////////////////////////
   // Verify ItemData Signature(s)
@@ -209,6 +226,16 @@ async function doVerification(commitment: Commitment, keys: SignedKeys | undefin
     itemDataSignaturesVerified = verifyEd25519(publicKeyDecoded, canonicalItemDataHash.hash, base64Decode(signature))
   }
 
+  // Create an Array of the itemData hashes collected from each itemData entry
+  // to be listed in the hashes that the commitment 'commitsTo'.
+  const itemDataHashes: string[] = []
+  for (const element of itemData ?? []) {
+    const { hash } = element
+    if (hash !== undefined) {
+      itemDataHashes.push(hash)
+    }
+  }
+
   // //////////////////////////////////////////////////////////////////////////////
   // Construct Item Hash to verify against first proof later
   // //////////////////////////////////////////////////////////////////////////////
@@ -220,6 +247,30 @@ async function doVerification(commitment: Commitment, keys: SignedKeys | undefin
   }
 
   const canonicalItemHash: CanonicalHash = canonicalizeAndHashData(item)
+
+  // //////////////////////////////////////////////////////////////////////////////
+  // Fetch timestamp associated with the item.observableEntropy hash
+  // //////////////////////////////////////////////////////////////////////////////
+
+  let observableEntropyTimestamp: Date | undefined = undefined
+  if (!offline && itemSignals?.observableEntropy) {
+    try {
+      const entropyUrl = `${ENTROPY_SERVER_BASE_URL}/hash/${itemSignals.observableEntropy}`
+      const entropyResp = await unfetch(entropyUrl)
+
+      if (entropyResp.ok) {
+        const entropyObj = (await entropyResp.json()) as {
+          createdAt: string
+        }
+
+        if (entropyObj.createdAt) {
+          observableEntropyTimestamp = new Date(entropyObj.createdAt)
+        }
+      }
+    } catch (error) {
+      // Ignore error
+    }
+  }
 
   // //////////////////////////////////////////////////////////////////////////////
   // Verify CommitmentData Signature(s)
@@ -429,6 +480,20 @@ async function doVerification(commitment: Commitment, keys: SignedKeys | undefin
     return v.ok
   })
 
+  // Collect all of the timestamps from the verified transactions. The timestamps
+  // are retrieved from the transaction's block/ledger.
+  const allVerifiedTransactionTimestamps: Date[] = []
+  verificationTransactions.forEach(tx => {
+    if (tx.timestamp instanceof Date) {
+      allVerifiedTransactionTimestamps.push(tx.timestamp)
+    }
+  })
+
+  // TypeScript forced to add '+' (Unary operator) to each of the Date objects being compared
+  // to coerce them to numbers. :-(
+  // See : https://github.com/Microsoft/TypeScript/issues/5710
+  const allVerifiedTransactionTimestampsSorted: Date[] = allVerifiedTransactionTimestamps.sort((a: Date, b: Date): number => +a - +b)
+
   // //////////////////////////////////////////////////////////////////////////////
   // Construct Commitment Verification Result
   // //////////////////////////////////////////////////////////////////////////////
@@ -461,6 +526,23 @@ async function doVerification(commitment: Commitment, keys: SignedKeys | undefin
     },
     proofs: verificationProofs,
     transactions: verificationTransactions,
+  }
+
+  // Include the attributes the commitment verifiably commits to only if
+  // the commitment is known to be fully verified.
+  if (isVerified) {
+    verificationResult.commitsTo = {
+      hashes: itemDataHashes,
+      timestamps: {
+        submittedAfter: observableEntropyTimestamp?.toISOString(),
+        submittedAt: decodedIdTimestampISO8601,
+        submittedBefore: allVerifiedTransactionTimestampsSorted[0]?.toISOString(),
+        submitWindowMilliseconds:
+          observableEntropyTimestamp && allVerifiedTransactionTimestampsSorted[0]
+            ? +allVerifiedTransactionTimestampsSorted[0] - +observableEntropyTimestamp
+            : undefined,
+      },
+    }
   }
 
   assert(verificationResult, CommitmentVerificationStruct)

@@ -82,7 +82,7 @@ export async function verifyStellar(transaction: CommitTransaction, testing: boo
     inputHash: transaction.inputHash,
     transactionId: transaction.transactionId,
     blockId: transaction.blockId,
-    timestamp: ledger.closed_at,
+    timestamp: new Date(ledger.closed_at),
     urlApi: txUrl,
     urlWeb: urlHuman,
   }

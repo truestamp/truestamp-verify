@@ -9,6 +9,7 @@ import { isIso3166Alpha2Code, Iso3166Alpha2Code } from 'iso-3166-ts'
 
 import {
   array,
+  date,
   defaulted,
   define,
   enums,
@@ -457,7 +458,7 @@ export const VerificationTransactionStruct = object({
   inputHash: nonempty(pattern(size(string(), 32 * 2), REGEX_HASH_HEX_32)),
   transactionId: nonempty(string()),
   blockId: nonempty(string()),
-  timestamp: optional(nonempty(iso8601UTC())),
+  timestamp: optional(date()),
   urlApi: optional(nonempty(string())),
   urlWeb: optional(nonempty(string())),
   error: optional(string()),
@@ -492,6 +493,17 @@ export const CommitmentVerificationStruct = object({
   ),
   proofs: optional(nonempty(array(VerificationProofStruct))),
   transactions: optional(nonempty(array(VerificationTransactionStruct))),
+  commitsTo: optional(
+    object({
+      hashes: array(pattern(size(trimmed(string()), 20 * 2, 64 * 2), REGEX_HASH_HEX_20_64)),
+      timestamps: object({
+        submittedAfter: optional(iso8601UTC()),
+        submittedAt: iso8601UTC(),
+        submittedBefore: optional(iso8601UTC()),
+        submitWindowMilliseconds: optional(size(number(), 0, 3600 * 24 * 365 * 1000)),
+      }),
+    }),
+  ),
   error: optional(string()),
 })
 
