@@ -1,20 +1,14 @@
 // Copyright © 2020-2022 Truestamp Inc. All rights reserved.
 
-import { assert, create, is, StructError } from 'superstruct'
-import { sha256, Tree } from '@truestamp/tree'
+import { assert, create, StructError } from 'superstruct'
+import { Tree } from '@truestamp/tree'
 import { decodeUnsafely, IdV1DecodeUnsafely } from '@truestamp/id'
-import { canonify } from '@truestamp/canonify'
-import { encode as hexEncode, decode as hexDecode } from '@stablelib/hex'
+import { decode as hexDecode } from '@stablelib/hex'
 import { decode as base64Decode } from '@stablelib/base64'
 import { verify as verifyEd25519 } from '@stablelib/ed25519'
-import { hash as stableSHA256 } from '@stablelib/sha256'
-import { equal } from '@stablelib/constant-time'
-import { DateTime } from 'luxon'
-import unfetch from 'isomorphic-unfetch'
 
 import {
   CanonicalHash,
-  CommitmentData,
   Commitment,
   CommitmentStruct,
   CommitProof,
@@ -22,178 +16,24 @@ import {
   CommitmentVerification,
   CommitmentVerificationStruct,
   Item,
-  ItemData,
   SignedKey,
-  SignedKeyStruct,
-  SignedKeysStruct,
-  UnsignedKey,
   VerificationProof,
   VerificationTransaction,
   VerificationTransactionStruct,
   SignedKeys,
+  EntropyResponse,
 } from './types'
+
+import { canonicalizeAndHashData, getEntropyFromHash, publicKeyMatchesKnownPublicKey, timestampMicrosecondsToISO } from './utils'
 
 import { verifyStellar } from './verifyStellar'
 
-const KEY_SERVER_BASE_URL = 'https://keys.truestamp.com'
-const ENTROPY_SERVER_BASE_URL = 'https://entropy.truestamp.com'
-
-// Last updated: 2022-05-24
-const BACKUP_PUBLIC_KEYS: SignedKey[] = [
-  {
-    handle: 'a56faa2b',
-    type: 'ed25519',
-    publicKey: 'K546EiGp4vsAvvOLYA1m0XKyqc4RoJ+7qPoXZs4Z+NU=',
-    environment: 'development',
-    expired: false,
-    selfSignature: 'Vj0A4kNa2a4tRLxOEPFwV7irNIGUoe7Q8SX1JfkRHeNea9M+3Q3vT+9n640mMJhm2nUIDvbCtmtB2xqGoqpmCQ==',
-  },
-  {
-    handle: 'f36947d3',
-    type: 'ed25519',
-    publicKey: '2/N8KtnOq46WOvQay/cun/3vin7dYU0jtwliVf6g83s=',
-    environment: 'staging',
-    expired: false,
-    selfSignature: 'lWxD/ujp9UdGkk2MsUUla1oAR3FopK8jCeE4eNfeS6HS/ue6dUk+vhoNI3zUNsGFlNXUzwskET/VtS8i5KgQCA==',
-  },
-  {
-    handle: 'b3395500',
-    type: 'ed25519',
-    publicKey: 'BnE/2AYhgMd0KY7tXdMfmRJPoPY4I5h7rhQf+9nswAQ=',
-    environment: 'production',
-    expired: false,
-    selfSignature: 'yZG0mJUpeWdaayZMF70bHrBnjIYihmoZoiEbfciGxARvocmLp0JlKXaP5MtQGCd73yqjOHX1aZqHGOPise7fAw==',
-  },
-]
-
-export function timestampMicrosecondsToISO(timestamp: number): string {
-  return DateTime.fromMillis(Math.floor(timestamp / 1000))
-    .toUTC()
-    .toISO()
-}
-
-/**
- * For a given public key, calculate its handle.
- * @param publicKey The public key to calculate the handle for
- * @return The public key's handle
- */
-function getHandleForPublicKey(publicKey: Uint8Array): string {
-  return hexEncode(sha256(publicKey)).slice(0, 8).toLowerCase()
-}
-
-/**
- * Attempt to receive a single key from a public key server identified by a handle.
- * If operating in offline mode, the keys parameter can be used to override the
- * default public keys baked into this library.
- * @param handle The handle of the key to retrieve
- * @param keys An optional array of keys to use when offline.
- * @param offline Whether to attempt to verify the commitment offline.
- * @return The key associated with the handle, or undefined if not found
- */
-async function getKeyByHandle(handle: string, keys?: SignedKey[], offline?: boolean): Promise<SignedKey | undefined> {
-  // If an array of keys was provided, use them to the exclusion of any other.
-  if (is(keys, SignedKeysStruct)) {
-    return keys.find((key: SignedKey): boolean => key.handle === handle)
-  }
-
-  // No keys were provided for offline, so we'll use the baked public keys
-  if (offline) {
-    return BACKUP_PUBLIC_KEYS.find((key: SignedKey): boolean => key.handle === handle)
-  }
-
-  // Not operating offline, try to fetch the key from the key server
-  try {
-    const response: Response = await fetch(`${KEY_SERVER_BASE_URL}/${handle}`)
-
-    if (response.ok) {
-      const key: SignedKey = create(await response.json(), SignedKeyStruct)
-      return is(key, SignedKeyStruct) ? key : undefined
-    }
-
-    return undefined
-  } catch (error) {
-    return undefined
-  }
-}
-
-/**
- * For a given public key, calculate its handle, look it up on a public key server
- * and verify that the key associated with the handle matches the public key passed in.
- * @param publicKey The public key to verify is authoritatively published
- * @param keys An optional array of keys to use when offline.
- * @param offline Whether to attempt to verify the commitment offline.
- * @return A boolean indicating whether the public key is known and authentic.
- */
-async function publicKeyMatchesKnownPublicKey(publicKey: Uint8Array, keys?: SignedKey[], offline?: boolean): Promise<boolean> {
-  try {
-    const handle = getHandleForPublicKey(publicKey)
-
-    let key: SignedKey | undefined = undefined
-
-    key = await getKeyByHandle(handle, keys, offline)
-
-    if (key === undefined) {
-      return false
-    }
-
-    const foundPublicKey: Uint8Array = base64Decode(key.publicKey)
-    if (!equal(foundPublicKey, publicKey)) {
-      return false
-    }
-
-    // Ensure that the handle of the found key resolves to match the handle we calculated
-    if (handle !== getHandleForPublicKey(foundPublicKey) || handle !== key.handle) {
-      return false
-    }
-
-    // Verify that the self-signed signature on the published key is valid
-    // Do this last as it is the most expensive step.
-    const foundKeySelfSignature: Uint8Array = base64Decode(key.selfSignature)
-
-    // A key without the self-signature component to verify against.
-    const unsignedKey: UnsignedKey = {
-      environment: key.environment,
-      expired: key.expired,
-      handle: key.handle,
-      publicKey: key.publicKey,
-      type: key.type,
-    }
-
-    const canonicalHashedUnsignedKey: CanonicalHash = canonicalizeAndHashData(unsignedKey)
-
-    const isKeySelfSignatureVerified = verifyEd25519(foundPublicKey, canonicalHashedUnsignedKey.hash, foundKeySelfSignature)
-
-    if (!isKeySelfSignatureVerified) {
-      return false
-    }
-
-    return true
-  } catch (error) {
-    return false
-  }
-}
-
-/**
- * Canonicalize a Struct and return the sha-256 'hash' and 'hashType' of the canonicalized Struct
- * @param data The data to canonicalize
- * @return The canonicalized data
- */
-function canonicalizeAndHashData(data: Item | ItemData[] | CommitmentData | UnsignedKey): CanonicalHash {
-  const canonicalData = canonify(data)
-
-  const canonicalDataUint8Array = new TextEncoder().encode(canonicalData)
-  const hash: Uint8Array = stableSHA256(canonicalDataUint8Array)
-  const hashUint8Array: Uint8Array = new Uint8Array(hash)
-  const hashHex: string = hexEncode(hashUint8Array, true) // true = lowercase
-  return {
-    hash: hashUint8Array,
-    hashHex: hashHex,
-    hashType: 'sha-256',
-    canonicalData: canonicalData,
-  }
-}
-
-async function doVerification(commitment: Commitment, keys: SignedKeys | undefined, offline = false): Promise<CommitmentVerification> {
+async function doVerification(
+  commitment: Commitment,
+  keys: SignedKeys | undefined,
+  offline = false,
+  entropyFromHashFunction: ((hash: string) => Promise<EntropyResponse | undefined>) | undefined = undefined,
+): Promise<CommitmentVerification> {
   const { commitmentData, commitmentDataSignatures } = commitment
   const { id, itemData, itemDataSignatures, itemSignals, proofs, transactions } = commitmentData
 
@@ -252,23 +92,19 @@ async function doVerification(commitment: Commitment, keys: SignedKeys | undefin
   // Fetch timestamp associated with the item.observableEntropy hash
   // //////////////////////////////////////////////////////////////////////////////
 
-  let observableEntropyTimestamp: Date | undefined = undefined
+  let observableEntropyCreatedAt: Date | undefined = undefined
   if (!offline && itemSignals?.observableEntropy) {
-    try {
-      const entropyUrl = `${ENTROPY_SERVER_BASE_URL}/hash/${itemSignals.observableEntropy}`
-      const entropyResp = await unfetch(entropyUrl)
+    let entropy: EntropyResponse | undefined
 
-      if (entropyResp.ok) {
-        const entropyObj = (await entropyResp.json()) as {
-          createdAt: string
-        }
+    if (entropyFromHashFunction) {
+      // external fetch function
+      entropy = await entropyFromHashFunction(itemSignals?.observableEntropy)
+    } else {
+      entropy = await getEntropyFromHash(itemSignals?.observableEntropy)
+    }
 
-        if (entropyObj.createdAt) {
-          observableEntropyTimestamp = new Date(entropyObj.createdAt)
-        }
-      }
-    } catch (error) {
-      // Ignore error
+    if (entropy) {
+      observableEntropyCreatedAt = new Date(entropy.createdAt)
     }
   }
 
@@ -534,12 +370,12 @@ async function doVerification(commitment: Commitment, keys: SignedKeys | undefin
     verificationResult.commitsTo = {
       hashes: itemDataHashes,
       timestamps: {
-        submittedAfter: observableEntropyTimestamp?.toISOString(),
+        submittedAfter: observableEntropyCreatedAt?.toISOString(),
         submittedAt: decodedIdTimestampISO8601,
         submittedBefore: allVerifiedTransactionTimestampsSorted[0]?.toISOString(),
         submitWindowMilliseconds:
-          observableEntropyTimestamp && allVerifiedTransactionTimestampsSorted[0]
-            ? +allVerifiedTransactionTimestampsSorted[0] - +observableEntropyTimestamp
+          observableEntropyCreatedAt && allVerifiedTransactionTimestampsSorted[0]
+            ? +allVerifiedTransactionTimestampsSorted[0] - +observableEntropyCreatedAt
             : undefined,
       },
     }
@@ -549,12 +385,17 @@ async function doVerification(commitment: Commitment, keys: SignedKeys | undefin
   return verificationResult
 }
 
-async function verifier(commitment: Commitment, keys: SignedKeys | undefined, offline = false): Promise<CommitmentVerification> {
+async function verifier(
+  commitment: Commitment,
+  keys: SignedKeys | undefined,
+  offline = false,
+  entropyFromHashFunction?: ((hash: string) => Promise<EntropyResponse | undefined>) | undefined,
+): Promise<CommitmentVerification> {
   try {
     // Verify the structure of the incoming commitment and
     // construct a stub response CommitmentStruct if it is invalid.
     assert(commitment, CommitmentStruct)
-    return await doVerification(commitment, keys, offline)
+    return await doVerification(commitment, keys, offline, entropyFromHashFunction)
   } catch (error) {
     const errorStub: CommitmentVerification = {
       ok: false,
@@ -593,61 +434,17 @@ async function verifier(commitment: Commitment, keys: SignedKeys | undefined, of
  *
  * @param commitment A commitment object to verify.
  * @param options.keys Force use of a set of keys.
+ * @param options.entropyFromHashFunction A function that returns the entropy for a given hash. Useful to pass when using Cloudflare workers service bindings.
  * @returns A promise that resolves to an Object. The top-level `ok` property will be 'true' if the entire proof is verified.
- *
- * @example Sample output:
- * *
- * * ```typescript
- * {
- *   ok: true,
- *   id: 'T11_01G63P5WPW0CWJ7N6WGAXEXGJH_1655833818400000_A6D3501894C9D27D3A626B6E1ACFCD1B',
- *   offline: false,
- *   testEnv: true,
- *   itemData: {
- *     hash: 'c15fbfedf73881e7264ccefbabdcb679d247348e35dea14eba1d906c174c3e8e',
- *     signaturesCount: 1,
- *     signaturesVerified: true,
- *   },
- *   item: {
- *     hash: '7901019d4f28788058e5e661e756d33049ad40f69dbf3057c8260f1dde8dfeb8',
- *   },
- *   commitmentData: {
- *     hash: 'bf58d1780fe8a5fb30be1599781e96857bc21e3eb0a530f1c3d75b72d51833c9',
- *     signaturesCount: 1,
- *     signaturesVerified: true,
- *     signaturesPublicKeyVerified: true,
- *   },
- *   proofs: [
- *     {
- *       ok: true,
- *       inputHash: '7901019d4f28788058e5e661e756d33049ad40f69dbf3057c8260f1dde8dfeb8',
- *       merkleRoot: '7d371488a002714c9d2efb7f86da7c289bd865d0b359a1dadd13966078f7abce',
- *     },
- *   ],
- *   transactions: [
- *     {
- *       ok: true,
- *       offline: false,
- *       intent: 'xlm',
- *       inputHash: '7d371488a002714c9d2efb7f86da7c289bd865d0b359a1dadd13966078f7abce',
- *       transactionId: '09f0c766b0d393f27a7eddfceea46167106cd8fd4f21756196117876d5880503',
- *       blockId: '1600114',
- *       timestamp: '2022-06-21T17:52:06Z',
- *       urlApi: 'https://horizon-testnet.stellar.org/transactions/09f0c766b0d393f27a7eddfceea46167106cd8fd4f21756196117876d5880503',
- *       urlWeb: 'https://stellar.expert/explorer/testnet/tx/09f0c766b0d393f27a7eddfceea46167106cd8fd4f21756196117876d5880503',
- *     },
- *   ],
- * }
- * ```
  */
-
 export async function verify(
   commitment: Commitment,
-  options: { keys?: SignedKey[] } = {
+  options: { keys?: SignedKey[]; entropyFromHashFunction?: ((hash: string) => Promise<EntropyResponse | undefined>) | undefined } = {
     keys: undefined,
+    entropyFromHashFunction: undefined,
   },
 ): Promise<CommitmentVerification> {
-  return await verifier(commitment, options.keys, false)
+  return await verifier(commitment, options.keys, false, options.entropyFromHashFunction)
 }
 
 /**
@@ -667,32 +464,36 @@ export async function verify(
 
  * @param commitment A commitment object to verify offline.
  * @param options.keys Force use of a set of keys offline.
+ * @param options.entropyFromHashFunction A function that returns the entropy for a given hash. Useful to pass when using Cloudflare workers service bindings.
  * @returns A promise that resolves to an Object. The top-level `ok` property will be 'true' if the entire proof is verified offline.
  *
  */
 export async function verifyUnsafelyOffline(
   commitment: Commitment,
-  options: { keys?: SignedKey[] } = {
+  options: { keys?: SignedKey[]; entropyFromHashFunction?: ((hash: string) => Promise<EntropyResponse | undefined>) | undefined } = {
     keys: undefined,
+    entropyFromHashFunction: undefined,
   },
 ): Promise<CommitmentVerification> {
-  return await verifier(commitment, options.keys, true)
+  return await verifier(commitment, options.keys, true, options.entropyFromHashFunction)
 }
 
 /**
  * Predicate function to check if a commitment is valid and returning true|false. Throws no Errors.
  * @param commitment A commitment object to verify.
  * @param options.keys Force use of a set of keys.
+ * @param options.entropyFromHashFunction A function that returns the entropy for a given hash. Useful to pass when using Cloudflare workers service bindings.
  * @returns A promise that resolves to a boolean indicating if the commitment is valid.
  */
 export async function isVerified(
   commitment: Commitment,
-  options: { keys?: SignedKey[] } = {
+  options: { keys?: SignedKey[]; entropyFromHashFunction?: ((hash: string) => Promise<EntropyResponse | undefined>) | undefined } = {
     keys: undefined,
+    entropyFromHashFunction: undefined,
   },
 ): Promise<boolean> {
   try {
-    const verification: CommitmentVerification = await verifier(commitment, options.keys, false)
+    const verification: CommitmentVerification = await verifier(commitment, options.keys, false, options.entropyFromHashFunction)
 
     return verification.ok
   } catch (error) {
@@ -704,16 +505,18 @@ export async function isVerified(
  * Predicate function to check if a commitment is valid and returning true|false offline. Throws no Errors.
  * @param commitment A commitment object to verify offline.
  * @param options.keys Force use of a set of keys offline.
+ * @param options.entropyFromHashFunction A function that returns the entropy for a given hash. Useful to pass when using Cloudflare workers service bindings.
  * @returns A promise that resolves to a boolean indicating if the commitment is valid.
  */
 export async function isVerifiedUnsafelyOffline(
   commitment: Commitment,
-  options: { keys?: SignedKey[] } = {
+  options: { keys?: SignedKey[]; entropyFromHashFunction?: ((hash: string) => Promise<EntropyResponse | undefined>) | undefined } = {
     keys: undefined,
+    entropyFromHashFunction: undefined,
   },
 ): Promise<boolean> {
   try {
-    const verification: CommitmentVerification = await verifier(commitment, options.keys, true)
+    const verification: CommitmentVerification = await verifier(commitment, options.keys, true, options.entropyFromHashFunction)
 
     return verification.ok && verification.offline
   } catch (error) {
@@ -726,10 +529,16 @@ export async function isVerifiedUnsafelyOffline(
  * @param commitment A commitment object to verify.
  * @param keys Force use of a set of keys.
  * @param offline Whether to use offline verification.
+ * @param entropyFromHashFunction A function that returns the entropy for a given hash. Useful to pass when using Cloudflare workers service bindings.
  * @returns A promise that resolves to void.
  */
-async function asserter(commitment: Commitment, keys: SignedKeys | undefined, offline: boolean): Promise<void> {
-  const verification: CommitmentVerification = await verifier(commitment, keys, offline)
+async function asserter(
+  commitment: Commitment,
+  keys: SignedKeys | undefined,
+  offline: boolean,
+  entropyFromHashFunction?: ((hash: string) => Promise<EntropyResponse | undefined>) | undefined,
+): Promise<void> {
+  const verification: CommitmentVerification = await verifier(commitment, keys, offline, entropyFromHashFunction)
 
   // The verify() function should always return a commitment and
   // never throw an error. So we just need to check if the commitment
@@ -743,28 +552,32 @@ async function asserter(commitment: Commitment, keys: SignedKeys | undefined, of
  * Assert that the commitment is valid. If not, throw an Error.
  * @param commitment A commitment object to verify.
  * @param options.keys Force use of a set of keys.
+ * @param options.entropyFromHashFunction A function that returns the entropy for a given hash. Useful to pass when using Cloudflare workers service bindings.
  * @returns A promise that resolves to void when the commitment is valid.
  */
 export async function assertVerified(
   commitment: Commitment,
-  options: { keys?: SignedKey[] } = {
+  options: { keys?: SignedKey[]; entropyFromHashFunction?: ((hash: string) => Promise<EntropyResponse | undefined>) | undefined } = {
     keys: undefined,
+    entropyFromHashFunction: undefined,
   },
 ): Promise<void> {
-  await asserter(commitment, options.keys, false)
+  await asserter(commitment, options.keys, false, options.entropyFromHashFunction)
 }
 
 /**
  * Assert that the commitment is valid offline. If not, throw an Error.
  * @param commitment A commitment object to verify offline.
  * @param options.keys Force use of a set of keys offline.
+ * @param options.entropyFromHashFunction A function that returns the entropy for a given hash. Useful to pass when using Cloudflare workers service bindings.
  * @returns A promise that resolves to void when the commitment is valid.
  */
 export async function assertVerifiedUnsafelyOffline(
   commitment: Commitment,
-  options: { keys?: SignedKey[] } = {
+  options: { keys?: SignedKey[]; entropyFromHashFunction?: ((hash: string) => Promise<EntropyResponse | undefined>) | undefined } = {
     keys: undefined,
+    entropyFromHashFunction: undefined,
   },
 ): Promise<void> {
-  await asserter(commitment, options.keys, true)
+  await asserter(commitment, options.keys, true, options.entropyFromHashFunction)
 }
