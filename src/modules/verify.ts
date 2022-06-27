@@ -39,9 +39,7 @@ async function doVerification(
   // //////////////////////////////////////////////////////////////////////////////
 
   // Decode the commitment's Id ('unsafely', since we can't validate HMAC here).
-  const decodedId: IdV1DecodeUnsafely = decodeUnsafely({
-    id: id,
-  })
+  const decodedId: IdV1DecodeUnsafely = decodeUnsafely({ id: id })
 
   // Use this timestamp in the commitsTo field of the commitment verification output
   // as it represents the `submittedAt` timestamp.
