@@ -1,5 +1,4 @@
 // Copyright © 2020-2022 Truestamp Inc. All rights reserved.
-import { create } from 'superstruct'
 
 import { verify, verifyUnsafelyOffline, isVerified, isVerifiedUnsafelyOffline, assertVerified, assertVerifiedUnsafelyOffline } from '../src/index'
 
@@ -7,7 +6,7 @@ const goodCommitment = require('./commitments/good.json')
 const badHashCommitment = require('./commitments/badHash.json')
 const offlineKeys = require('./keys.json')
 
-import { EntropyResponse, EntropyResponseStruct } from '../src/modules/types'
+import { EntropyResponse } from '../src/modules/types'
 
 async function mockGetEntropyFromHash(hash: string): Promise<EntropyResponse | undefined> {
   const entropy: EntropyResponse = {
@@ -30,7 +29,7 @@ async function mockGetEntropyFromHash(hash: string): Promise<EntropyResponse | u
     prevHash: '99f633aacafbc6c48212b44c490404a2c51192fb12e3b2a0b97278ef7ab53fd3',
   }
 
-  return create(entropy, EntropyResponseStruct)
+  return EntropyResponse.parse(entropy)
 }
 
 describe('verify()', () => {
@@ -84,7 +83,7 @@ describe('verify()', () => {
       const result = await verify(badHashCommitment)
       expect(result.ok).toEqual(false)
       expect(result.offline).toEqual(false)
-      expect(result.error).toContain("invalid attribute for 'hash'")
+      expect(result.error).toContain("Commitment invalid : invalid_string : [commitmentData, itemData, 0, hash] : Invalid")
     })
   })
 })
@@ -147,7 +146,7 @@ describe('verifyUnsafelyOffline()', () => {
       const result = await verifyUnsafelyOffline(badHashCommitment)
       expect(result.ok).toEqual(false)
       expect(result.offline).toEqual(true)
-      expect(result.error).toContain("invalid attribute for 'hash'")
+      expect(result.error).toContain("Commitment invalid : invalid_string : [commitmentData, itemData, 0, hash] : Invalid")
     })
   })
 })
@@ -195,7 +194,7 @@ describe('assertVerified()', () => {
   describe('with a known bad commitment', () => {
     test('should throw an Error', () => {
       expect.assertions(1)
-      return assertVerified(badHashCommitment).catch(e => expect(e.message).toMatch("Commitment invalid : invalid attribute for 'hash'"))
+      return assertVerified(badHashCommitment).catch(e => expect(e.message).toMatch("Commitment invalid : invalid_string : [commitmentData, itemData, 0, hash] : Invalid"))
     })
   })
 })
@@ -211,7 +210,7 @@ describe('assertVerifiedUnsafelyOffline()', () => {
   describe('with a known bad commitment', () => {
     test('should throw an Error', () => {
       expect.assertions(1)
-      return assertVerifiedUnsafelyOffline(badHashCommitment).catch(e => expect(e.message).toMatch("Commitment invalid : invalid attribute for 'hash'"))
+      return assertVerifiedUnsafelyOffline(badHashCommitment).catch(e => expect(e.message).toMatch("Commitment invalid : invalid_string : [commitmentData, itemData, 0, hash] : Invalid"))
     })
   })
 })

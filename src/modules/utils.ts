@@ -5,23 +5,11 @@ import { equal } from '@stablelib/constant-time'
 import { encode as hexEncode } from '@stablelib/hex'
 import { decode as base64Decode } from '@stablelib/base64'
 import { sha256 } from '@truestamp/tree'
-import { create, is } from 'superstruct'
 import { verify as verifyEd25519 } from '@stablelib/ed25519'
 
 import unfetch from 'isomorphic-unfetch'
 
-import {
-  CanonicalHash,
-  CommitmentData,
-  Item,
-  ItemData,
-  SignedKey,
-  SignedKeyStruct,
-  SignedKeysStruct,
-  UnsignedKey,
-  EntropyResponse,
-  EntropyResponseStruct,
-} from './types'
+import { CanonicalHash, CommitmentData, Item, ItemData, SignedKey, SignedKeys, UnsignedKey, EntropyResponse } from './types'
 
 const ENTROPY_SERVER_BASE_URL = 'https://entropy.truestamp.com'
 const KEY_SERVER_BASE_URL = 'https://keys.truestamp.com'
@@ -65,8 +53,7 @@ export async function getEntropyFromHash(hash: string): Promise<EntropyResponse 
     const entropyResp = await unfetch(entropyUrl)
 
     if (entropyResp.ok) {
-      const entropyObj = (await entropyResp.json()) as EntropyResponse
-      return create(entropyObj, EntropyResponseStruct)
+      return EntropyResponse.parse(await entropyResp.json())
     }
   } catch (error) {
     // Ignore error
@@ -101,8 +88,9 @@ export function getHandleForPublicKey(publicKey: Uint8Array): string {
  */
 export async function getKeyByHandle(handle: string, keys?: SignedKey[], offline?: boolean): Promise<SignedKey | undefined> {
   // If an array of keys was provided, use them to the exclusion of any other.
-  if (is(keys, SignedKeysStruct)) {
-    return keys.find((key: SignedKey): boolean => key.handle === handle)
+  const keysParseResponse = SignedKeys.safeParse(keys)
+  if (keysParseResponse.success) {
+    return keysParseResponse.data.find((key: SignedKey): boolean => key.handle === handle)
   }
 
   // No keys were provided for offline, so we'll use the baked public keys
@@ -115,8 +103,7 @@ export async function getKeyByHandle(handle: string, keys?: SignedKey[], offline
     const response: Response = await fetch(`${KEY_SERVER_BASE_URL}/${handle}`)
 
     if (response.ok) {
-      const key: SignedKey = create(await response.json(), SignedKeyStruct)
-      return is(key, SignedKeyStruct) ? key : undefined
+      return SignedKey.parse(await response.json())
     }
 
     return undefined

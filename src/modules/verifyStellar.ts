@@ -1,10 +1,9 @@
-import { assert } from 'superstruct'
 import { encode as hexEncode, decode as hexDecode } from '@stablelib/hex'
 import { equal } from '@stablelib/constant-time'
 import { decode } from '@stablelib/base64'
 import unfetch from 'isomorphic-unfetch'
 
-import { CommitTransaction, VerificationTransaction, VerificationTransactionStruct } from './types'
+import { CommitTransaction, VerificationTransaction } from './types'
 
 export async function verifyStellar(transaction: CommitTransaction, testing: boolean | undefined): Promise<VerificationTransaction> {
   const baseUrl = testing ? 'https://horizon-testnet.stellar.org' : 'https://horizon.stellar.org'
@@ -87,6 +86,5 @@ export async function verifyStellar(transaction: CommitTransaction, testing: boo
     urlWeb: urlHuman,
   }
 
-  assert(verification, VerificationTransactionStruct)
-  return verification
+  return VerificationTransaction.parse(verification)
 }

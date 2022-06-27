@@ -1,6 +1,6 @@
 // Copyright © 2020-2022 Truestamp Inc. All rights reserved.
 
-import { assert, create, StructError } from 'superstruct'
+import { z } from 'zod'
 import { Tree } from '@truestamp/tree'
 import { decodeUnsafely, IdV1DecodeUnsafely } from '@truestamp/id'
 import { decode as hexDecode } from '@stablelib/hex'
@@ -10,18 +10,15 @@ import { verify as verifyEd25519 } from '@stablelib/ed25519'
 import {
   CanonicalHash,
   Commitment,
-  CommitmentStruct,
+  CommitmentVerification,
   CommitProof,
   CommitTransaction,
-  CommitmentVerification,
-  CommitmentVerificationStruct,
+  EntropyResponse,
   Item,
   SignedKey,
+  SignedKeys,
   VerificationProof,
   VerificationTransaction,
-  VerificationTransactionStruct,
-  SignedKeys,
-  EntropyResponse,
 } from './types'
 
 import { canonicalizeAndHashData, getEntropyFromHash, publicKeyMatchesKnownPublicKey, timestampMicrosecondsToISO } from './utils'
@@ -214,17 +211,14 @@ async function doVerification(
         switch (transactionsForMerkleRoot[i].intent) {
           case 'xlm':
             if (offline === true) {
-              verificationResult = create(
-                {
-                  ok: true,
-                  offline: true,
-                  intent: 'xlm',
-                  inputHash: transactionsForMerkleRoot[i].inputHash,
-                  transactionId: transactionsForMerkleRoot[i].transactionId,
-                  blockId: transactionsForMerkleRoot[i].blockId,
-                },
-                VerificationTransactionStruct,
-              )
+              verificationResult = VerificationTransaction.parse({
+                ok: true,
+                offline: true,
+                intent: 'xlm',
+                inputHash: transactionsForMerkleRoot[i].inputHash,
+                transactionId: transactionsForMerkleRoot[i].transactionId,
+                blockId: transactionsForMerkleRoot[i].blockId,
+              })
             } else {
               verificationResult = await verifyStellar(
                 transactionsForMerkleRoot[i],
@@ -235,17 +229,14 @@ async function doVerification(
 
           case 'twitter':
             if (offline === true) {
-              verificationResult = create(
-                {
-                  ok: true,
-                  offline: true,
-                  intent: 'twitter',
-                  inputHash: transactionsForMerkleRoot[i].inputHash,
-                  transactionId: transactionsForMerkleRoot[i].transactionId,
-                  blockId: transactionsForMerkleRoot[i].blockId,
-                },
-                VerificationTransactionStruct,
-              )
+              verificationResult = VerificationTransaction.parse({
+                ok: true,
+                offline: true,
+                intent: 'twitter',
+                inputHash: transactionsForMerkleRoot[i].inputHash,
+                transactionId: transactionsForMerkleRoot[i].transactionId,
+                blockId: transactionsForMerkleRoot[i].blockId,
+              })
             } else {
               // TODO: verify twitter
             }
@@ -253,17 +244,14 @@ async function doVerification(
 
           case 'btc':
             if (offline === true) {
-              verificationResult = create(
-                {
-                  ok: true,
-                  offline: true,
-                  intent: 'btc',
-                  inputHash: transactionsForMerkleRoot[i].inputHash,
-                  transactionId: transactionsForMerkleRoot[i].transactionId,
-                  blockId: transactionsForMerkleRoot[i].blockId,
-                },
-                VerificationTransactionStruct,
-              )
+              verificationResult = VerificationTransaction.parse({
+                ok: true,
+                offline: true,
+                intent: 'btc',
+                inputHash: transactionsForMerkleRoot[i].inputHash,
+                transactionId: transactionsForMerkleRoot[i].transactionId,
+                blockId: transactionsForMerkleRoot[i].blockId,
+              })
             } else {
               // TODO: verify btc
             }
@@ -271,17 +259,14 @@ async function doVerification(
 
           case 'eth':
             if (offline === true) {
-              verificationResult = create(
-                {
-                  ok: true,
-                  offline: true,
-                  intent: 'eth',
-                  inputHash: transactionsForMerkleRoot[i].inputHash,
-                  transactionId: transactionsForMerkleRoot[i].transactionId,
-                  blockId: transactionsForMerkleRoot[i].blockId,
-                },
-                VerificationTransactionStruct,
-              )
+              verificationResult = VerificationTransaction.parse({
+                ok: true,
+                offline: true,
+                intent: 'eth',
+                inputHash: transactionsForMerkleRoot[i].inputHash,
+                transactionId: transactionsForMerkleRoot[i].transactionId,
+                blockId: transactionsForMerkleRoot[i].blockId,
+              })
             } else {
               // TODO: verify eth
             }
@@ -291,8 +276,7 @@ async function doVerification(
             break
         }
 
-        assert(verificationResult, VerificationTransactionStruct)
-        verificationTransactions.push(verificationResult)
+        verificationTransactions.push(VerificationTransaction.parse(verificationResult))
       } catch (error) {
         if (error instanceof Error) {
           // Return an error object with the transaction's info and the error message.
@@ -381,8 +365,7 @@ async function doVerification(
     }
   }
 
-  assert(verificationResult, CommitmentVerificationStruct)
-  return verificationResult
+  return CommitmentVerification.parse(verificationResult)
 }
 
 async function verifier(
@@ -392,9 +375,9 @@ async function verifier(
   entropyFromHashFunction?: ((hash: string) => Promise<EntropyResponse | undefined>) | undefined,
 ): Promise<CommitmentVerification> {
   try {
-    // Verify the structure of the incoming commitment and
+    // Verify the structure of the incoming Commitment and
     // construct a stub response CommitmentStruct if it is invalid.
-    assert(commitment, CommitmentStruct)
+    Commitment.parse(commitment)
     return await doVerification(commitment, keys, offline, entropyFromHashFunction)
   } catch (error) {
     const errorStub: CommitmentVerification = {
@@ -405,17 +388,13 @@ async function verifier(
 
     const prefix = 'Commitment invalid :'
 
-    if (error instanceof StructError) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const { key, value, type } = error
-
-      if (value === undefined) {
-        errorStub.error = `${prefix} missing attribute '${key as string}'`
-      } else if (type === 'never') {
-        errorStub.error = `${prefix} unknown attribute '${key as string}'`
-      } else {
-        errorStub.error = `${prefix} invalid attribute for '${key as string}'`
-      }
+    if (error instanceof z.ZodError) {
+      const joinedIssues: string = error.issues
+        .map((issue: z.ZodIssue) => {
+          return `${issue.code} : [${issue.path.join(', ')}] : ${issue.message}`
+        })
+        .join('; ')
+      errorStub.error = `${prefix} ${joinedIssues}`
     } else if (error instanceof Error) {
       errorStub.error = `${prefix} ${error.message}`
     }
