@@ -1,12 +1,13 @@
 // Copyright © 2020-2022 Truestamp Inc. All rights reserved.
 
+import { string } from 'zod'
 import { verify, verifyUnsafelyOffline, isVerified, isVerifiedUnsafelyOffline, assertVerified, assertVerifiedUnsafelyOffline } from '../src/index'
 
 const goodCommitment = require('./commitments/good.json')
 const badHashCommitment = require('./commitments/badHash.json')
 const offlineKeys = require('./keys.json')
 
-import { EntropyResponse } from '../src/modules/types'
+import { CommitTransactionBitcoin, CommitTransactionEthereum, CommitTransactionStellar, CommitTransactionTwitter, VerificationTransaction, EntropyResponse } from '../src/modules/types'
 
 async function mockGetEntropyFromHash(hash: string): Promise<EntropyResponse | undefined> {
   const entropy: EntropyResponse = {
@@ -37,9 +38,9 @@ describe('verify()', () => {
     test('should return a commitment status of passed', async () => {
       const result = await verify(goodCommitment)
       expect(result).toBeTruthy()
-      expect(result.ok).toEqual(true)
+      expect(result.success).toEqual(true)
       expect(result.offline).toEqual(false)
-      expect(result.testEnv).toEqual(true)
+      expect(result.testnet).toEqual(true)
       expect(result.commitmentData?.signaturesCount).toEqual(1)
       expect(result.commitmentData?.signaturesVerified).toEqual(true)
       expect(result.itemData?.signaturesCount).toEqual(1)
@@ -59,20 +60,51 @@ describe('verify()', () => {
       expect(result.transactions?.length).toBeGreaterThanOrEqual(1)
 
       if (result.transactions) {
-        for (const transaction of result.transactions) {
-          expect(transaction.ok).toEqual(true)
-          expect(transaction.offline).toEqual(false)
-          expect(['btc', 'eth', 'twitter', 'xlm'].includes(transaction.intent)).toBeTruthy()
-          expect(/^[0-9a-f]+$/.test(transaction.inputHash)).toEqual(true)
-          expect(transaction.transactionId?.length).toBeGreaterThanOrEqual(1)
-          expect(transaction.blockId?.length).toBeGreaterThanOrEqual(1)
+        for (const vt of result.transactions) {
+          expect(VerificationTransaction.safeParse(vt).success).toEqual(true)
+          expect(vt.success).toEqual(true)
+          expect(vt.offline).toEqual(false)
+
+          switch (vt.intent) {
+            case "bitcoin":
+              expect(vt.intent).toEqual("bitcoin")
+              expect(CommitTransactionBitcoin.safeParse(vt.transaction).success).toEqual(true)
+              break;
+
+            case "ethereum":
+              expect(vt.intent).toEqual("ethereum")
+              expect(CommitTransactionEthereum.safeParse(vt.transaction).success).toEqual(true)
+              break;
+
+            case "stellar":
+              expect(vt.intent).toEqual("stellar")
+              expect(CommitTransactionStellar.safeParse(vt.transaction).success).toEqual(true)
+              break;
+
+            case "twitter":
+              expect(vt.intent).toEqual("twitter")
+              expect(CommitTransactionTwitter.safeParse(vt.transaction).success).toEqual(true)
+              break;
+
+            default:
+              break;
+          }
         }
       }
+
+      expect(result.commitsTo?.hashes).toBeInstanceOf(Array)
+      expect(result.commitsTo?.hashes.length).toBeGreaterThanOrEqual(1)
+      expect(result.commitsTo?.observableEntropy).toBeTruthy()
+      expect(result.commitsTo?.timestamps).toBeTruthy()
+      expect(result.commitsTo?.timestamps.submittedAfter).toBeTruthy()
+      expect(result.commitsTo?.timestamps.submittedAt).toBeTruthy()
+      expect(result.commitsTo?.timestamps.submittedBefore).toBeTruthy()
+      expect(result.commitsTo?.timestamps.submitWindowMilliseconds).toBeGreaterThanOrEqual(1)
     })
 
     test('should use an external entropyFromHashFunction', async () => {
       const result = await verify(goodCommitment, { entropyFromHashFunction: mockGetEntropyFromHash })
-      expect(result.ok).toEqual(true)
+      expect(result.success).toEqual(true)
       expect(result.commitsTo?.timestamps?.submittedAfter).toEqual("2022-04-09T14:40:23.359Z")
     })
 
@@ -81,7 +113,7 @@ describe('verify()', () => {
   describe('with a known bad commitment', () => {
     test('should return false when the commitment hash is bad', async () => {
       const result = await verify(badHashCommitment)
-      expect(result.ok).toEqual(false)
+      expect(result.success).toEqual(false)
       expect(result.offline).toEqual(false)
       expect(result.error).toContain("Commitment invalid : invalid_string : [commitmentData, itemData, 0, hash] : Invalid")
     })
@@ -90,14 +122,14 @@ describe('verify()', () => {
 
 describe('verifyUnsafelyOffline()', () => {
   describe('with a known good commitment', () => {
-    test('should return a commitment ok with keys provided', async () => {
+    test('should return a commitment success with keys provided', async () => {
       const result = await verifyUnsafelyOffline(goodCommitment, {
         keys: offlineKeys,
       })
       expect(result).toBeTruthy()
-      expect(result.ok).toEqual(true)
+      expect(result.success).toEqual(true)
       expect(result.offline).toEqual(true)
-      expect(result.testEnv).toEqual(true)
+      expect(result.testnet).toEqual(true)
       expect(result.commitmentData?.signaturesCount).toEqual(1)
       expect(result.commitmentData?.signaturesVerified).toEqual(true)
       expect(result.itemData?.signaturesCount).toEqual(1)
@@ -117,23 +149,45 @@ describe('verifyUnsafelyOffline()', () => {
       expect(result.transactions?.length).toBeGreaterThanOrEqual(1)
 
       if (result.transactions) {
-        for (const transaction of result.transactions) {
-          expect(transaction.ok).toEqual(true)
-          expect(transaction.offline).toEqual(true)
-          expect(['btc', 'eth', 'twitter', 'xlm'].includes(transaction.intent)).toBeTruthy()
-          expect(/^[0-9a-f]+$/.test(transaction.inputHash)).toEqual(true)
-          expect(transaction.transactionId?.length).toBeGreaterThanOrEqual(1)
-          expect(transaction.blockId?.length).toBeGreaterThanOrEqual(1)
+        for (const vt of result.transactions) {
+          expect(VerificationTransaction.safeParse(vt).success).toEqual(true)
+          expect(vt.success).toEqual(true)
+          expect(vt.offline).toEqual(true)
+
+          switch (vt.intent) {
+            case "bitcoin":
+              expect(vt.intent).toEqual("bitcoin")
+              expect(CommitTransactionBitcoin.safeParse(vt.transaction).success).toEqual(true)
+              break;
+
+            case "ethereum":
+              expect(vt.intent).toEqual("ethereum")
+              expect(CommitTransactionEthereum.safeParse(vt.transaction).success).toEqual(true)
+              break;
+
+            case "stellar":
+              expect(vt.intent).toEqual("stellar")
+              expect(CommitTransactionStellar.safeParse(vt.transaction).success).toEqual(true)
+              break;
+
+            case "twitter":
+              expect(vt.intent).toEqual("twitter")
+              expect(CommitTransactionTwitter.safeParse(vt.transaction).success).toEqual(true)
+              break;
+
+            default:
+              break;
+          }
         }
       }
     })
 
-    test('should return a commitment ok with no keys provided', async () => {
+    test('should return a commitment success with no keys provided', async () => {
       const result = await verifyUnsafelyOffline(goodCommitment)
       expect(result).toBeTruthy()
-      expect(result.ok).toEqual(true)
+      expect(result.success).toEqual(true)
       expect(result.offline).toEqual(true)
-      expect(result.testEnv).toEqual(true)
+      expect(result.testnet).toEqual(true)
       expect(result.commitmentData?.signaturesCount).toEqual(1)
       expect(result.commitmentData?.signaturesVerified).toEqual(true)
       expect(result.itemData?.signaturesCount).toEqual(1)
@@ -144,7 +198,7 @@ describe('verifyUnsafelyOffline()', () => {
   describe('with a known bad commitment', () => {
     test('should return false when the commitment hash is bad', async () => {
       const result = await verifyUnsafelyOffline(badHashCommitment)
-      expect(result.ok).toEqual(false)
+      expect(result.success).toEqual(false)
       expect(result.offline).toEqual(true)
       expect(result.error).toContain("Commitment invalid : invalid_string : [commitmentData, itemData, 0, hash] : Invalid")
     })

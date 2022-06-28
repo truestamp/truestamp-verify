@@ -205,21 +205,54 @@ async function doVerification(
 
     for (let i = 0; i < transactionsForMerkleRoot.length; i++) {
       try {
+        const transaction: CommitTransaction = transactionsForMerkleRoot[i]
         let verificationResult
-        switch (transactionsForMerkleRoot[i].intent) {
-          case 'xlm':
+
+        // discriminate which union type to verify
+        switch (transaction.intent) {
+          case 'bitcoin':
             if (offline === true) {
-              verificationResult = VerificationTransaction.parse({
-                ok: true,
+              const vt: VerificationTransaction = {
+                success: true,
                 offline: true,
-                intent: 'xlm',
-                inputHash: transactionsForMerkleRoot[i].inputHash,
-                transactionId: transactionsForMerkleRoot[i].transactionId,
-                blockId: transactionsForMerkleRoot[i].blockId,
-              })
+                intent: transaction.intent,
+                transaction: transaction,
+              }
+
+              verificationResult = VerificationTransaction.parse(vt)
+            } else {
+              // TODO: verify bitcoin
+            }
+            break
+
+          case 'ethereum':
+            if (offline === true) {
+              const vt: VerificationTransaction = {
+                success: true,
+                offline: true,
+                intent: transaction.intent,
+                transaction: transaction,
+              }
+
+              verificationResult = VerificationTransaction.parse(vt)
+            } else {
+              // TODO: verify ethereum
+            }
+            break
+
+          case 'stellar':
+            if (offline === true) {
+              const vt: VerificationTransaction = {
+                success: true,
+                offline: true,
+                intent: transaction.intent,
+                transaction: transaction,
+              }
+
+              verificationResult = VerificationTransaction.parse(vt)
             } else {
               verificationResult = await verifyStellar(
-                transactionsForMerkleRoot[i],
+                transaction,
                 decodedId.test, // verify against a test network?
               )
             }
@@ -227,46 +260,16 @@ async function doVerification(
 
           case 'twitter':
             if (offline === true) {
-              verificationResult = VerificationTransaction.parse({
-                ok: true,
+              const vt: VerificationTransaction = {
+                success: true,
                 offline: true,
-                intent: 'twitter',
-                inputHash: transactionsForMerkleRoot[i].inputHash,
-                transactionId: transactionsForMerkleRoot[i].transactionId,
-                blockId: transactionsForMerkleRoot[i].blockId,
-              })
+                intent: transaction.intent,
+                transaction: transaction,
+              }
+
+              verificationResult = VerificationTransaction.parse(vt)
             } else {
               // TODO: verify twitter
-            }
-            break
-
-          case 'btc':
-            if (offline === true) {
-              verificationResult = VerificationTransaction.parse({
-                ok: true,
-                offline: true,
-                intent: 'btc',
-                inputHash: transactionsForMerkleRoot[i].inputHash,
-                transactionId: transactionsForMerkleRoot[i].transactionId,
-                blockId: transactionsForMerkleRoot[i].blockId,
-              })
-            } else {
-              // TODO: verify btc
-            }
-            break
-
-          case 'eth':
-            if (offline === true) {
-              verificationResult = VerificationTransaction.parse({
-                ok: true,
-                offline: true,
-                intent: 'eth',
-                inputHash: transactionsForMerkleRoot[i].inputHash,
-                transactionId: transactionsForMerkleRoot[i].transactionId,
-                blockId: transactionsForMerkleRoot[i].blockId,
-              })
-            } else {
-              // TODO: verify eth
             }
             break
 
@@ -279,12 +282,10 @@ async function doVerification(
         if (error instanceof Error) {
           // Return an error object with the transaction's info and the error message.
           const v: VerificationTransaction = {
-            ok: false,
+            success: false,
             offline: offline ? true : false,
             intent: transactionsForMerkleRoot[i].intent,
-            inputHash: transactionsForMerkleRoot[i].inputHash,
-            transactionId: transactionsForMerkleRoot[i].transactionId,
-            blockId: transactionsForMerkleRoot[i].blockId,
+            transaction: transactionsForMerkleRoot[0],
             error: `Transaction verification for '${transactionsForMerkleRoot[0].intent}' inputHash '${transactionsForMerkleRoot[i].inputHash}' failed : ${error.message}`,
           }
           verificationTransactions.push(v)
@@ -295,22 +296,23 @@ async function doVerification(
 
   // Check if every transaction was ok, offline or not.
   const allTransactionsVerifiedOrSkipped = verificationTransactions.every((v: VerificationTransaction) => {
-    return v.ok
+    return v.success
   })
 
   // Collect all of the timestamps from the verified transactions. The timestamps
   // are retrieved from the transaction's block/ledger.
-  const allVerifiedTransactionTimestamps: Date[] = []
+  const allVerifiedTransactionTimestamps: string[] = []
   verificationTransactions.forEach(tx => {
-    if (tx.timestamp instanceof Date) {
+    if (tx.timestamp) {
       allVerifiedTransactionTimestamps.push(tx.timestamp)
     }
   })
 
-  // TypeScript forced to add '+' (Unary operator) to each of the Date objects being compared
-  // to coerce them to numbers. :-(
+  // Check if the timestamps are in ascending order. Need to convert them to Date objects for proper comparison.
+  // String comparison is not enough, as the timestamps are in ISO 8601 format and may have differing end-of-string forms.
+  // TypeScript forced to add '+' (Unary operator) to each of the Date objects being compared to coerce them to numbers. :-(
   // See : https://github.com/Microsoft/TypeScript/issues/5710
-  const allVerifiedTransactionTimestampsSorted: Date[] = allVerifiedTransactionTimestamps.sort((a: Date, b: Date): number => +a - +b)
+  const allVerifiedTransactionTimestampsSorted: string[] = allVerifiedTransactionTimestamps.sort((a: string, b: string): number => +new Date(a) - +new Date(b))
 
   // //////////////////////////////////////////////////////////////////////////////
   // Construct Commitment Verification Result
@@ -324,10 +326,10 @@ async function doVerification(
     allTransactionsVerifiedOrSkipped
 
   const verificationResult: CommitmentVerification = {
-    ok: isVerified,
+    success: isVerified,
     id: id,
     offline: offline ? true : false,
-    testEnv: decodedId.test,
+    testnet: decodedId.test,
     itemData: {
       hash: canonicalItemDataHash.hashHex,
       signaturesCount: itemDataSignatures ? itemDataSignatures.length : 0,
@@ -351,13 +353,14 @@ async function doVerification(
   if (isVerified) {
     verificationResult.commitsTo = {
       hashes: itemDataHashes,
+      observableEntropy: observableEntropyCreatedAt ? item.itemSignals?.observableEntropy : undefined,
       timestamps: {
         submittedAfter: observableEntropyCreatedAt?.toISOString(),
         submittedAt: decodedIdTimestampISO8601,
-        submittedBefore: allVerifiedTransactionTimestampsSorted[0]?.toISOString(),
+        submittedBefore: allVerifiedTransactionTimestampsSorted[0],
         submitWindowMilliseconds:
           observableEntropyCreatedAt && allVerifiedTransactionTimestampsSorted[0]
-            ? +allVerifiedTransactionTimestampsSorted[0] - +observableEntropyCreatedAt
+            ? +new Date(allVerifiedTransactionTimestampsSorted[0]) - +new Date(observableEntropyCreatedAt)
             : undefined,
       },
     }
@@ -379,7 +382,7 @@ async function verifier(
     return await doVerification(commitment, keys, offline, entropyFromHashFunction)
   } catch (error) {
     const errorStub: CommitmentVerification = {
-      ok: false,
+      success: false,
       id: commitment.commitmentData.id,
       offline: offline,
     }
@@ -472,7 +475,7 @@ export async function isVerified(
   try {
     const verification: CommitmentVerification = await verifier(commitment, options.keys, false, options.entropyFromHashFunction)
 
-    return verification.ok
+    return verification.success
   } catch (error) {
     return false
   }
@@ -495,7 +498,7 @@ export async function isVerifiedUnsafelyOffline(
   try {
     const verification: CommitmentVerification = await verifier(commitment, options.keys, true, options.entropyFromHashFunction)
 
-    return verification.ok && verification.offline
+    return verification.success && verification.offline
   } catch (error) {
     return false
   }
@@ -520,7 +523,7 @@ async function asserter(
   // The verify() function should always return a commitment and
   // never throw an error. So we just need to check if the commitment
   // is ok and throw if not.
-  if (!verification.ok) {
+  if (!verification.success) {
     throw new Error(verification.error)
   }
 }

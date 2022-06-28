@@ -94,20 +94,20 @@ the successful verification of a Commitment.
 
 ```json
 {
-  "ok": true,
-  "id": "T11_01G66CW4FTZ68SH6S6AC9XYDQR_1655924724926000_4589D2A6FCF82041978AC134256EEE1D",
+  "id": "T11_01G6ND2ZAP3QQWJGM4AGTRCQ9P_1656428265850000_0D6F6F7057B6C0AEF63D043A5AB0FF79",
+  "success": true,
   "offline": false,
-  "testEnv": true,
+  "testnet": true,
   "itemData": {
     "hash": "c15fbfedf73881e7264ccefbabdcb679d247348e35dea14eba1d906c174c3e8e",
     "signaturesCount": 1,
     "signaturesVerified": true
   },
   "item": {
-    "hash": "2ae6a630a21059095500d4de6319a4a0bf1159b217748afbe9b78ea8e0dccb39"
+    "hash": "6c624010de9050296f78daf1865eea20cf1e787d8cf9c81fdf43a3e70ce2ae20"
   },
   "commitmentData": {
-    "hash": "b5b87340207d41836f0c88c3ca75d9a958b4d7011d00098eaf7b593991ebfe31",
+    "hash": "813a5342ae5bafcc10ce375a9de87eabe70a310db5c5dede18ad93a98984c256",
     "signaturesCount": 1,
     "signaturesVerified": true,
     "signaturesPublicKeyVerified": true
@@ -115,30 +115,43 @@ the successful verification of a Commitment.
   "proofs": [
     {
       "ok": true,
-      "inputHash": "2ae6a630a21059095500d4de6319a4a0bf1159b217748afbe9b78ea8e0dccb39",
-      "merkleRoot": "080b1533665e9aa9837944595e1fbe0f226f605117ab2938e8155a21191df931"
+      "inputHash": "6c624010de9050296f78daf1865eea20cf1e787d8cf9c81fdf43a3e70ce2ae20",
+      "merkleRoot": "4ac380cda4821b1e5fb2c5ce6e7ae19ff1a8ee11b828061ab25ddc49e1ef24f5"
+    },
+    {
+      "ok": true,
+      "inputHash": "4ac380cda4821b1e5fb2c5ce6e7ae19ff1a8ee11b828061ab25ddc49e1ef24f5",
+      "merkleRoot": "b4fe024ab042302b02763fcd0ebe8b12e8394c623bf8d2565b931c0e44d21f26"
     }
   ],
   "transactions": [
     {
-      "ok": true,
+      "intent": "stellar",
+      "success": true,
       "offline": false,
-      "intent": "xlm",
-      "inputHash": "080b1533665e9aa9837944595e1fbe0f226f605117ab2938e8155a21191df931",
-      "transactionId": "2eae96e0a3d2737b510e3294448ea64d3d4c2a34ea93a3062350a79146453f70",
-      "blockId": "5944",
-      "timestamp": "2022-06-22T19:07:04.000Z",
-      "urlApi": "https://horizon-testnet.stellar.org/transactions/2eae96e0a3d2737b510e3294448ea64d3d4c2a34ea93a3062350a79146453f70",
-      "urlWeb": "https://stellar.expert/explorer/testnet/tx/2eae96e0a3d2737b510e3294448ea64d3d4c2a34ea93a3062350a79146453f70"
+      "transaction": {
+        "inputHash": "4ac380cda4821b1e5fb2c5ce6e7ae19ff1a8ee11b828061ab25ddc49e1ef24f5",
+        "intent": "stellar",
+        "hash": "50e43c22fc2274d72fb82e74a24eac50de33d71060deb75d50a6b56ab6c258db",
+        "ledger": 101654
+      },
+      "timestamp": "2022-06-28T14:59:07Z",
+      "urls": [
+        "https://horizon-testnet.stellar.org/transactions/50e43c22fc2274d72fb82e74a24eac50de33d71060deb75d50a6b56ab6c258db",
+        "https://stellar.expert/explorer/testnet/tx/50e43c22fc2274d72fb82e74a24eac50de33d71060deb75d50a6b56ab6c258db"
+      ]
     }
   ],
   "commitsTo": {
-    "hashes": ["d54db6e2435ddbeee76ba718c438558afeb0fe718ca1ab3cd7e4f00be37eff42"],
+    "hashes": [
+      "d54db6e2435ddbeee76ba718c438558afeb0fe718ca1ab3cd7e4f00be37eff42"
+    ],
+    "observableEntropy": "8e5d4171458c69d5bc812f6dee6d9335cc73331c45d3b5fb7bb33e0912af5003",
     "timestamps": {
-      "submittedAfter": "2022-06-22T19:00:29.829Z",
-      "submittedAt": "2022-06-22T19:05:24.926Z",
-      "submittedBefore": "2022-06-22T19:07:04.000Z",
-      "submitWindowMilliseconds": 394171
+      "submittedAfter": "2022-06-28T14:55:23.763Z",
+      "submittedAt": "2022-06-28T14:57:45.850Z",
+      "submittedBefore": "2022-06-28T14:59:07Z",
+      "submitWindowMilliseconds": 223237
     }
   }
 }

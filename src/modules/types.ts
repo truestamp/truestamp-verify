@@ -7,20 +7,25 @@ import { isValidUnsafely } from '@truestamp/id'
 import { decode as base64Decode } from '@stablelib/base64'
 import { isIso3166Alpha2Code } from 'iso-3166-ts'
 
-// SHA-1 -> 20 bytes
-// SHA-256 -> 32 bytes
-// SHA-384 -> 48 bytes
-// SHA-512 -> 64 bytes
-export const REGEX_HASH_HEX_20_64 = /^(([a-f0-9]{2}){20,64})$/i
-
 // SHA-256 -> 32 bytes
 export const REGEX_HASH_HEX_32 = /^(([a-f0-9]{2}){32})$/i
 
 export const HashHex32 = z.string().regex(REGEX_HASH_HEX_32)
 export type HashHex32 = z.infer<typeof HashHex32>
 
+// SHA-1 -> 20 bytes
+// SHA-256 -> 32 bytes
+// SHA-384 -> 48 bytes
+// SHA-512 -> 64 bytes
+export const REGEX_HASH_HEX_20_64 = /^(([a-f0-9]{2}){20,64})$/i
+
 export const HashHex20to64 = z.string().regex(REGEX_HASH_HEX_20_64)
 export type HashHex20to64 = z.infer<typeof HashHex20to64>
+
+// ULID String Type
+const REGEX_ULID = /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$/
+export const ULID = z.string().regex(REGEX_ULID)
+export type ULID = z.infer<typeof ULID>
 
 /**
  *  The names of the built-in hash functions supported by the library.
@@ -325,10 +330,15 @@ export const ItemRequest = Item.pick({
 
 export type ItemRequest = z.infer<typeof ItemRequest>
 
+// The response from the API when submitting an Item to the API
+export const ItemResponse = z.object({ id: TruestampId })
+
+export type ItemResponse = z.infer<typeof ItemResponse>
+
 // An ItemEnvelope is a wrapper around an Item
 export const ItemEnvelope = z.object({
   owner: z.string().min(1).max(255), // DB only
-  ulid: z.string().length(26), // DB only
+  ulid: ULID, // DB only
   item: Item,
 })
 
@@ -381,17 +391,53 @@ export const CommitProof = z.object({
 
 export type CommitProof = z.infer<typeof CommitProof>
 
-export const CommitIntents = z.enum(['btc', 'eth', 'twitter', 'xlm'])
-
-export type CommitIntents = z.infer<typeof CommitIntents>
-
-export const CommitTransaction = z.object({
-  intent: CommitIntents,
+// Types for Discriminated Union of CommitTransactions for various
+// transaction destinations. They all extend CommitTransaction which
+// is the base (and which should not be directly used).
+const CommitTransactionBase = z.object({
   inputHash: HashHex32,
-  transactionId: z.string().min(1),
-  blockId: z.string().min(1),
 })
 
+export const CommitTransactionBitcoin = CommitTransactionBase.extend({
+  intent: z.literal('bitcoin'),
+  hash: z.string().regex(/(0x)?[0-9a-f]+/i),
+}).strict()
+
+export type CommitTransactionBitcoin = z.infer<typeof CommitTransactionBitcoin>
+
+export const CommitTransactionEthereum = CommitTransactionBase.extend({
+  intent: z.literal('ethereum'),
+  hash: z.string().regex(/(0x)?[0-9a-f]+/i),
+}).strict()
+
+export type CommitTransactionEthereum = z.infer<typeof CommitTransactionEthereum>
+
+export const CommitTransactionStellar = CommitTransactionBase.extend({
+  intent: z.literal('stellar'),
+  hash: HashHex32,
+  ledger: z.number().int().min(11111),
+}).strict()
+
+export type CommitTransactionStellar = z.infer<typeof CommitTransactionStellar>
+
+export const CommitTransactionTwitter = CommitTransactionBase.extend({
+  intent: z.literal('twitter'),
+  id: z.string().regex(/[0-9]+/i),
+}).strict()
+
+export type CommitTransactionTwitter = z.infer<typeof CommitTransactionTwitter>
+
+// 'intent' is the discriminant
+// This is syntactic sugar on discriminated unions provided by Zod
+// https://zod.dev/?id=discriminated-unions
+export const CommitTransaction = z.discriminatedUnion('intent', [
+  CommitTransactionBitcoin,
+  CommitTransactionEthereum,
+  CommitTransactionStellar,
+  CommitTransactionTwitter,
+])
+
+// The Discriminated Union type
 export type CommitTransaction = z.infer<typeof CommitTransaction>
 
 export const CommitmentData = z.object({
@@ -415,7 +461,7 @@ export type Commitment = z.infer<typeof Commitment>
 export const ULIDResponse = z.object({
   t: z.number(),
   ts: ISO8601UTC,
-  ulid: z.string().length(26),
+  ulid: ULID,
 })
 
 export type ULIDResponse = z.infer<typeof ULIDResponse>
@@ -424,76 +470,80 @@ export const ULIDResponseCollection = z.array(ULIDResponse)
 
 export type ULIDResponseCollection = z.infer<typeof ULIDResponseCollection>
 
-export const VerificationProof = z.object({
-  ok: z.boolean(),
-  inputHash: HashHex32,
-  merkleRoot: HashHex32,
-  error: z.optional(z.string()),
-})
+export const VerificationProof = z
+  .object({
+    ok: z.boolean(),
+    inputHash: HashHex32,
+    merkleRoot: HashHex32,
+    error: z.optional(z.string()),
+  })
+  .strict()
 
 export type VerificationProof = z.infer<typeof VerificationProof>
 
-export const VerificationTransaction = z.object({
-  intent: CommitIntents,
-  ok: z.boolean(),
-  offline: z.boolean(),
-  inputHash: HashHex32,
-  transactionId: z.string().min(1),
-  blockId: z.string().min(1),
-  timestamp: z.optional(z.date()),
-  urlApi: z.optional(z.string().url()),
-  urlWeb: z.optional(z.string().url()),
-  error: z.optional(z.string()),
-})
+export const VerificationTransaction = z
+  .object({
+    intent: z.enum(['bitcoin', 'ethereum', 'stellar', 'twitter']),
+    success: z.boolean(),
+    offline: z.boolean(),
+    transaction: CommitTransaction,
+    timestamp: z.optional(ISO8601UTC),
+    urls: z.optional(z.array(z.string().url())),
+    error: z.optional(z.string()),
+  })
+  .strict()
 
 export type VerificationTransaction = z.infer<typeof VerificationTransaction>
 
-export const CommitmentVerification = z.object({
-  id: TruestampId,
-  ok: z.boolean(),
-  offline: z.boolean(),
-  testEnv: z.optional(z.boolean()),
-  itemData: z.optional(
-    z.object({
-      hash: HashHex32,
-      signaturesCount: z.number().int(),
-      signaturesVerified: z.boolean(),
-    }),
-  ),
-  item: z.optional(
-    z.object({
-      hash: HashHex32,
-    }),
-  ),
-  commitmentData: z.optional(
-    z.object({
-      hash: HashHex32,
-      signaturesCount: z.number().int(),
-      signaturesVerified: z.boolean(),
-      signaturesPublicKeyVerified: z.boolean(),
-    }),
-  ),
-  proofs: z.optional(z.array(VerificationProof).min(1)),
-  transactions: z.optional(z.array(VerificationTransaction).min(1)),
-  commitsTo: z.optional(
-    z.object({
-      hashes: z.array(HashHex20to64).min(1),
-      timestamps: z.object({
-        submittedAfter: z.optional(ISO8601UTC),
-        submittedAt: ISO8601UTC,
-        submittedBefore: z.optional(ISO8601UTC),
-        submitWindowMilliseconds: z.optional(
-          z
-            .number()
-            .int()
-            .min(0)
-            .max(3600 * 24 * 365 * 1000),
-        ),
+export const CommitmentVerification = z
+  .object({
+    id: TruestampId,
+    success: z.boolean(),
+    offline: z.boolean(),
+    testnet: z.optional(z.boolean()),
+    itemData: z.optional(
+      z.object({
+        hash: HashHex32,
+        signaturesCount: z.number().int(),
+        signaturesVerified: z.boolean(),
       }),
-    }),
-  ),
-  error: z.optional(z.string()),
-})
+    ),
+    item: z.optional(
+      z.object({
+        hash: HashHex32,
+      }),
+    ),
+    commitmentData: z.optional(
+      z.object({
+        hash: HashHex32,
+        signaturesCount: z.number().int(),
+        signaturesVerified: z.boolean(),
+        signaturesPublicKeyVerified: z.boolean(),
+      }),
+    ),
+    proofs: z.optional(z.array(VerificationProof).min(1)),
+    transactions: z.optional(z.array(VerificationTransaction).min(1)),
+    commitsTo: z.optional(
+      z.object({
+        hashes: z.array(HashHex20to64).min(1),
+        observableEntropy: z.optional(HashHex32),
+        timestamps: z.object({
+          submittedAfter: z.optional(ISO8601UTC),
+          submittedAt: ISO8601UTC,
+          submittedBefore: z.optional(ISO8601UTC),
+          submitWindowMilliseconds: z.optional(
+            z
+              .number()
+              .int()
+              .min(0)
+              .max(3600 * 24 * 365 * 1000),
+          ),
+        }),
+      }),
+    ),
+    error: z.optional(z.string()),
+  })
+  .strict()
 
 export type CommitmentVerification = z.infer<typeof CommitmentVerification>
 

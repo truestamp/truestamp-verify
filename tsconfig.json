@@ -12,7 +12,8 @@
     "esModuleInterop": true,
     "moduleResolution": "node",
     "resolveJsonModule": true,
-    "outDir": "lib"
+    "outDir": "lib",
+    "noErrorTruncation": true
   },
   "include": [
     "src/**/*.ts"
