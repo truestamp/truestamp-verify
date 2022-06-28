@@ -472,7 +472,7 @@ export type ULIDResponseCollection = z.infer<typeof ULIDResponseCollection>
 
 export const VerificationProof = z
   .object({
-    ok: z.boolean(),
+    success: z.boolean(),
     inputHash: HashHex32,
     merkleRoot: HashHex32,
     error: z.optional(z.string()),

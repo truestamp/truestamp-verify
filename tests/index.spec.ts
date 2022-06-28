@@ -1,6 +1,5 @@
 // Copyright © 2020-2022 Truestamp Inc. All rights reserved.
 
-import { string } from 'zod'
 import { verify, verifyUnsafelyOffline, isVerified, isVerifiedUnsafelyOffline, assertVerified, assertVerifiedUnsafelyOffline } from '../src/index'
 
 const goodCommitment = require('./commitments/good.json')
@@ -50,7 +49,7 @@ describe('verify()', () => {
 
       if (result.proofs) {
         for (const proof of result.proofs) {
-          expect(proof.ok).toEqual(true)
+          expect(proof.success).toEqual(true)
           expect(/^[0-9a-f]+$/.test(proof.inputHash)).toEqual(true)
           expect(/^[0-9a-f]+$/.test(proof.merkleRoot)).toEqual(true)
         }
@@ -139,7 +138,7 @@ describe('verifyUnsafelyOffline()', () => {
 
       if (result.proofs) {
         for (const proof of result.proofs) {
-          expect(proof.ok).toEqual(true)
+          expect(proof.success).toEqual(true)
           expect(/^[0-9a-f]+$/.test(proof.inputHash)).toEqual(true)
           expect(/^[0-9a-f]+$/.test(proof.merkleRoot)).toEqual(true)
         }

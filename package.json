@@ -1,7 +1,7 @@
 {
   "name": "@truestamp/verify",
   "type": "module",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "Truestamp <support@truestamp.com>",
   "license": "MIT",
   "description": "A library for independent verification of Truestamp Commitments.",

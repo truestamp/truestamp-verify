@@ -137,7 +137,7 @@ async function doVerification(
 
     // Also accepts an optional 'error' property.
     const vp: VerificationProof = {
-      ok: false,
+      success: false,
       inputHash: proof.inputHash,
       merkleRoot: proof.merkleRoot,
     }
@@ -170,7 +170,7 @@ async function doVerification(
     try {
       const isTreeVerified = Tree.verify(hexDecode(proof.merkleRoot), proof.inclusionProof, hexDecode(proof.inputHash))
       if (isTreeVerified) {
-        vp.ok = true
+        vp.success = true
       } else {
         throw new Error('Tree verification failed')
       }
@@ -187,7 +187,7 @@ async function doVerification(
 
   // Check if the 'verified' attribute is set to true for every transaction.
   const allProofsVerified = verificationProofs.every((v: VerificationProof) => {
-    return v.ok
+    return v.success
   })
 
   const proofMerkleRoots: string[] = proofs.map((proof: CommitProof): string => {
@@ -294,7 +294,7 @@ async function doVerification(
     }
   }
 
-  // Check if every transaction was ok, offline or not.
+  // Check if every transaction was successful, offline or not.
   const allTransactionsVerifiedOrSkipped = verificationTransactions.every((v: VerificationTransaction) => {
     return v.success
   })
@@ -406,7 +406,7 @@ async function verifier(
 
 /**
  * A function to check if a commitment is valid. If there are any errors,
- * the appropriate 'ok' property will be set to 'false' but no error will be
+ * the appropriate 'success' property will be set to 'false' but no error will be
  * thrown.
  *
  * You can provide a list of signed keys from https://keys.truestamp.com that were
@@ -415,7 +415,7 @@ async function verifier(
  * @param commitment A commitment object to verify.
  * @param options.keys Force use of a set of keys.
  * @param options.entropyFromHashFunction A function that returns the entropy for a given hash. Useful to pass when using Cloudflare workers service bindings.
- * @returns A promise that resolves to an Object. The top-level `ok` property will be 'true' if the entire proof is verified.
+ * @returns A promise that resolves to an Object. The top-level `success` property will be 'true' if the entire proof is verified.
  */
 export async function verify(
   commitment: Commitment,
@@ -445,7 +445,7 @@ export async function verify(
  * @param commitment A commitment object to verify offline.
  * @param options.keys Force use of a set of keys offline.
  * @param options.entropyFromHashFunction A function that returns the entropy for a given hash. Useful to pass when using Cloudflare workers service bindings.
- * @returns A promise that resolves to an Object. The top-level `ok` property will be 'true' if the entire proof is verified offline.
+ * @returns A promise that resolves to an Object. The top-level `success` property will be 'true' if the entire proof is verified offline.
  *
  */
 export async function verifyUnsafelyOffline(
@@ -522,7 +522,7 @@ async function asserter(
 
   // The verify() function should always return a commitment and
   // never throw an error. So we just need to check if the commitment
-  // is ok and throw if not.
+  // is successful and throw if not.
   if (!verification.success) {
     throw new Error(verification.error)
   }
