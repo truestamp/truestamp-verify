@@ -274,7 +274,11 @@ async function doVerification(
             break
 
           default:
-            break
+            // Ensure exhaustive checking of all union types.
+            // See : https://medium.com/@ahsan.ayaz/understanding-discriminated-unions-in-typescript-1ccc0e053cf5
+            // eslint-disable-next-line no-case-declarations ,@typescript-eslint/no-unused-vars
+            const invalidCommitTransaction: never = transaction
+            throw new Error(`Unknown transaction discriminant`)
         }
 
         verificationTransactions.push(VerificationTransaction.parse(verificationResult))
