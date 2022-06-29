@@ -27,6 +27,30 @@ const REGEX_ULID = /^[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{26}$/
 export const ULID = z.string().regex(REGEX_ULID)
 export type ULID = z.infer<typeof ULID>
 
+const UnionHashTypes = z.union([z.literal('sha1'), z.literal('sha-256'), z.literal('sha-384'), z.literal('sha-512')])
+export type UnionHashTypes = z.infer<typeof UnionHashTypes>
+
+export const UnionProofHashTypes = z.union([
+  z.literal('sha224'),
+  z.literal('sha256'),
+  z.literal('sha384'),
+  z.literal('sha512'),
+  z.literal('sha512_256'),
+  z.literal('sha3_224'),
+  z.literal('sha3_256'),
+  z.literal('sha3_384'),
+  z.literal('sha3_512'),
+])
+
+export type UnionProofHashTypes = z.infer<typeof UnionProofHashTypes>
+
+export const UnionIntentTypes = z.union([z.literal('bitcoin'), z.literal('ethereum'), z.literal('stellar'), z.literal('twitter')])
+
+export type UnionIntentTypes = z.infer<typeof UnionIntentTypes>
+
+export const UnionEnvironmentTypes = z.union([z.literal('development'), z.literal('staging'), z.literal('production')])
+export type UnionEnvironmentTypes = z.infer<typeof UnionEnvironmentTypes>
+
 /**
  *  The names of the built-in hash functions supported by the library.
  * @ignore
@@ -255,7 +279,7 @@ export type Person = z.infer<typeof Person>
 export const Signature = z.object({
   publicKey: Base64,
   signature: Base64,
-  signatureType: z.enum(['ed25519']),
+  signatureType: z.literal('ed25519'),
   signer: z.optional(Person),
 })
 
@@ -289,7 +313,7 @@ const jsonSchema: z.ZodType<Json> = z.lazy(() => z.union([literalSchema, z.array
 
 export const ItemData = z.object({
   hash: HashHex20to64,
-  hashType: z.enum(['sha1', 'sha-256', 'sha-384', 'sha-512']),
+  hashType: UnionHashTypes,
   people: z.optional(z.array(Person).min(1)), // WHO?
   description: z.optional(z.string().min(1).max(256)), // WHAT?
   address: z.optional(Address), // WHERE?
@@ -361,14 +385,6 @@ export const ProofObjectLayer = z.tuple([
 
 export type ProofObjectLayer = z.infer<typeof ProofObjectLayer>
 
-export const ProofHashTypeEnum = z.enum(['sha224', 'sha256', 'sha384', 'sha512', 'sha512_256', 'sha3_224', 'sha3_256', 'sha3_384', 'sha3_512'])
-
-export type ProofHashTypeEnum = z.infer<typeof ProofHashTypeEnum>
-
-export const ItemHashTypeEnum = z.enum(['sha1', 'sha-256', 'sha-384', 'sha-512'])
-
-export type ItemHashTypeEnum = z.infer<typeof ItemHashTypeEnum>
-
 /**
  * Defines the shape of an Object encoded inclusion proof.
  * v : version number
@@ -377,7 +393,7 @@ export type ItemHashTypeEnum = z.infer<typeof ItemHashTypeEnum>
  * */
 export const ProofObject = z.object({
   v: z.number().int().min(1).max(1),
-  h: ProofHashTypeEnum,
+  h: UnionProofHashTypes,
   p: z.array(ProofObjectLayer),
 })
 
@@ -483,7 +499,7 @@ export type VerificationProof = z.infer<typeof VerificationProof>
 
 export const VerificationTransaction = z
   .object({
-    intent: z.enum(['bitcoin', 'ethereum', 'stellar', 'twitter']),
+    intent: UnionIntentTypes,
     success: z.boolean(),
     offline: z.boolean(),
     transaction: CommitTransaction,
@@ -547,15 +563,12 @@ export const CommitmentVerification = z
 
 export type CommitmentVerification = z.infer<typeof CommitmentVerification>
 
-export const EnvironmentEnum = z.enum(['development', 'staging', 'production'])
-export type Environment = z.infer<typeof EnvironmentEnum>
-
 export const SignedKey = z.object({
-  environment: EnvironmentEnum,
+  environment: UnionEnvironmentTypes,
   expired: z.boolean(),
   handle: z.string().min(1),
   publicKey: Base64,
-  type: z.enum(['ed25519']),
+  type: z.literal('ed25519'),
   selfSignature: Base64,
 })
 
@@ -572,7 +585,7 @@ export type UnsignedKey = z.infer<typeof UnsignedKey>
 export const CanonicalHash = z.object({
   hash: z.instanceof(Uint8Array),
   hashHex: HashHex32,
-  hashType: ItemHashTypeEnum,
+  hashType: UnionHashTypes,
   canonicalData: z.optional(z.string()),
 })
 
@@ -581,14 +594,14 @@ export type CanonicalHash = z.infer<typeof CanonicalHash>
 export const EntropyResponseFile = z.object({
   name: z.string(),
   hash: HashHex32,
-  hashType: z.enum(['sha256']),
+  hashType: z.literal('sha256'),
 })
 
 export type EntropyResponseFile = z.infer<typeof EntropyResponseFile>
 
 export const EntropyResponse = z.object({
   hash: HashHex32,
-  hashType: z.enum(['sha256']),
+  hashType: z.literal('sha256'),
   hashIterations: z.number().int().min(1),
   createdAt: ISO8601UTC,
   signature: Base64,
